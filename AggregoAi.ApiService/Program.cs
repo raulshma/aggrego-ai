@@ -1,3 +1,4 @@
+using AggregoAi.ApiService.AI;
 using AggregoAi.ApiService.Repositories;
 using AggregoAi.ApiService.Scheduling;
 using AggregoAi.ApiService.Services;
@@ -24,11 +25,21 @@ builder.Services.AddHttpClient<IRssFetcher, RssFetcher>(client =>
 });
 builder.Services.AddSingleton<IRssParser, RssParser>();
 
+// Register AI services with Semantic Kernel
+builder.Services.AddSingleton<ISemanticKernelService, SemanticKernelService>();
+builder.Services.AddHttpClient<ISearXNGTool, SearXNGTool>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddSingleton<IArticleSearchTool, ArticleSearchTool>();
+builder.Services.AddSingleton<IFactCheckAgent, FactCheckAgent>();
+
 // Add Quartz.NET scheduler with MongoDB persistence
 builder.Services.AddQuartzScheduler(builder.Configuration);
 
 // Add services to the container.
 builder.Services.AddProblemDetails();
+builder.Services.AddControllers();
 
 // Configure CORS for React frontend
 builder.Services.AddCors(options =>
@@ -57,6 +68,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => "AggregoAi API service is running.");
 
+app.MapControllers();
 app.MapDefaultEndpoints();
 
 app.Run();
