@@ -46,10 +46,14 @@ public class MongoArticleRepository : IArticleRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Article>> GetRecentAsync(int limit)
+    public async Task<IEnumerable<Article>> GetRecentAsync(int limit, bool includeHidden = false)
     {
+        var filter = includeHidden
+            ? Builders<Article>.Filter.Empty
+            : Builders<Article>.Filter.Eq(a => a.IsHidden, false);
+
         return await _collection
-            .Find(_ => true)
+            .Find(filter)
             .SortByDescending(a => a.PublicationDate)
             .Limit(limit)
             .ToListAsync();
@@ -90,10 +94,43 @@ public class MongoArticleRepository : IArticleRepository
         return result.DeletedCount > 0;
     }
 
+    public async Task<int> DeleteManyAsync(IEnumerable<string> ids)
+    {
+        var validIds = ids.Where(id => ObjectId.TryParse(id, out _)).ToList();
+        if (validIds.Count == 0)
+            return 0;
+
+        var filter = Builders<Article>.Filter.In(a => a.Id, validIds);
+        var result = await _collection.DeleteManyAsync(filter);
+        return (int)result.DeletedCount;
+    }
+
     public async Task<int> DeleteOlderThanAsync(DateTime cutoffDate)
     {
         var result = await _collection.DeleteManyAsync(a => a.PublicationDate < cutoffDate);
         return (int)result.DeletedCount;
+    }
+
+    public async Task<bool> SetHiddenAsync(string id, bool isHidden)
+    {
+        if (!ObjectId.TryParse(id, out _))
+            return false;
+
+        var update = Builders<Article>.Update.Set(a => a.IsHidden, isHidden);
+        var result = await _collection.UpdateOneAsync(a => a.Id == id, update);
+        return result.ModifiedCount > 0;
+    }
+
+    public async Task<int> SetHiddenManyAsync(IEnumerable<string> ids, bool isHidden)
+    {
+        var validIds = ids.Where(id => ObjectId.TryParse(id, out _)).ToList();
+        if (validIds.Count == 0)
+            return 0;
+
+        var filter = Builders<Article>.Filter.In(a => a.Id, validIds);
+        var update = Builders<Article>.Update.Set(a => a.IsHidden, isHidden);
+        var result = await _collection.UpdateManyAsync(filter, update);
+        return (int)result.ModifiedCount;
     }
 
     public async Task<IEnumerable<Article>> GetUntaggedAsync(int batchSize)

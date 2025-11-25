@@ -42,4 +42,9 @@ public interface IJobManagementService
     /// Gets execution history for a job.
     /// </summary>
     Task<IEnumerable<JobExecutionLog>> GetExecutionHistoryAsync(string jobKey, int limit = 50);
+
+    /// <summary>
+    /// Deletes a job and its triggers.
+    /// </summary>
+    Task<bool> DeleteJobAsync(string jobKey, string jobGroup);
 }

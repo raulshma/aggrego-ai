@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Plus, Pencil, Trash2, Rss, Clock, RefreshCw, Loader2, Globe, AlertCircle } from 'lucide-react';
 
 interface FeedFormData {
@@ -153,6 +154,7 @@ export function FeedManager() {
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -160,10 +162,15 @@ export function FeedManager() {
           <h2 className="text-2xl font-bold">RSS Sources</h2>
           <p className="text-muted-foreground text-sm">Manage your news feed sources</p>
         </div>
-        <Button onClick={handleAdd} variant="glow">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Source
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={handleAdd} variant="glow">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Source
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Add a new RSS feed source</TooltipContent>
+        </Tooltip>
       </div>
 
       {error && (
@@ -193,40 +200,60 @@ export function FeedManager() {
           {feeds.map((feed) => (
             <Card key={feed.id} className={!feed.isEnabled ? 'opacity-60' : ''}>
               <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center shrink-0">
                       <Globe className="w-5 h-5 text-primary" />
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{feed.name}</h3>
-                      <p className="text-xs text-muted-foreground truncate">{feed.url}</p>
+                    <div className="min-w-0 flex-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <h3 className="font-semibold truncate cursor-default">{feed.name}</h3>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs">{feed.name}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="text-xs text-muted-foreground truncate cursor-default">{feed.url}</p>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-md break-all">{feed.url}</TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
-                  <Badge variant={feed.isEnabled ? 'success' : 'secondary'}>
+                  <Badge variant={feed.isEnabled ? 'success' : 'secondary'} className="shrink-0">
                     {feed.isEnabled ? 'Active' : 'Paused'}
                   </Badge>
                 </div>
 
                 <div className="space-y-2 text-sm mb-4">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Clock className="w-4 h-4" />
-                    <code className="text-xs bg-muted px-2 py-0.5 rounded">{feed.cronExpression}</code>
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <code className="text-xs bg-muted px-2 py-0.5 rounded truncate">{feed.cronExpression}</code>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <RefreshCw className="w-4 h-4" />
-                    <span className="text-xs">Last: {formatDate(feed.lastFetchedAt)}</span>
+                    <RefreshCw className="w-4 h-4 shrink-0" />
+                    <span className="text-xs truncate">Last: {formatDate(feed.lastFetchedAt)}</span>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <Button onClick={() => handleEdit(feed)} variant="outline" size="sm" className="flex-1">
-                    <Pencil className="w-4 h-4 mr-1" />
-                    Edit
-                  </Button>
-                  <Button onClick={() => handleDelete(feed)} variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={() => handleEdit(feed)} variant="outline" size="sm" className="flex-1">
+                        <Pencil className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit feed settings</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={() => handleDelete(feed)} variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete this feed</TooltipContent>
+                  </Tooltip>
                 </div>
               </CardContent>
             </Card>
@@ -344,5 +371,6 @@ export function FeedManager() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }

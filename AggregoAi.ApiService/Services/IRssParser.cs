@@ -8,7 +8,8 @@ public record ParsedArticle(
     string Link,
     string? Description,
     DateTime? PublicationDate,
-    string SourceFeedId
+    string SourceFeedId,
+    string? ImageUrl = null
 );
 
 /// <summary>

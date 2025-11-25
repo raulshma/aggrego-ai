@@ -90,7 +90,8 @@ public class IngestionJob : IJob
                     SourceFeedId = feedId ?? "unknown",
                     SourceFeedName = feedName ?? "Unknown Feed",
                     VerificationStatus = VerificationStatus.NotVerified,
-                    Tags = new List<string>()
+                    Tags = new List<string>(),
+                    ImageUrl = parsedArticle.ImageUrl
                 };
 
                 await _articleRepository.CreateAsync(article);

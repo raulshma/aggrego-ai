@@ -200,6 +200,30 @@ public class JobManagementService : IJobManagementService
         return await _logRepository.GetByJobKeyAsync(jobKey, limit);
     }
 
+    public async Task<bool> DeleteJobAsync(string jobKey, string jobGroup)
+    {
+        var scheduler = await _schedulerFactory.GetScheduler();
+        var key = new JobKey(jobKey, jobGroup);
+
+        if (!await scheduler.CheckExists(key))
+        {
+            _logger.LogWarning("Job {JobKey} not found for deletion", key);
+            return false;
+        }
+
+        // Delete the job (this also removes all triggers)
+        var deleted = await scheduler.DeleteJob(key);
+
+        if (deleted)
+        {
+            // Remove from persistence
+            await _persistenceService.DeleteJobDefinitionAsync(jobKey, jobGroup);
+            _logger.LogInformation("Deleted job {JobKey}", key);
+        }
+
+        return deleted;
+    }
+
     private async Task<JobInfo?> GetJobInfoAsync(IScheduler scheduler, JobKey jobKey)
     {
         var jobDetail = await scheduler.GetJobDetail(jobKey);

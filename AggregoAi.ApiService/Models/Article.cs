@@ -41,6 +41,12 @@ public record Article
 
     [BsonElement("tags")]
     public IEnumerable<string> Tags { get; init; } = [];
+
+    [BsonElement("imageUrl")]
+    public string? ImageUrl { get; init; }
+
+    [BsonElement("isHidden")]
+    public bool IsHidden { get; init; } = false;
 }
 
 public enum VerificationStatus

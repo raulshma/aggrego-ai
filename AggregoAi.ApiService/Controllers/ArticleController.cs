@@ -1,6 +1,7 @@
 using AggregoAi.ApiService.AI;
 using AggregoAi.ApiService.Models;
 using AggregoAi.ApiService.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -179,6 +180,110 @@ public class ArticleController : ControllerBase
             return null;
         }
     }
+
+    /// <summary>
+    /// Deletes a single article by ID.
+    /// Admin only.
+    /// </summary>
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> DeleteArticle(string id)
+    {
+        try
+        {
+            var deleted = await _articleRepository.DeleteAsync(id);
+
+            if (!deleted)
+            {
+                return NotFound(new { error = $"Article with ID '{id}' not found" });
+            }
+
+            return Ok(new { message = "Article deleted successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting article {ArticleId}", id);
+            return StatusCode(500, new { error = "Failed to delete article" });
+        }
+    }
+
+    /// <summary>
+    /// Deletes multiple articles by IDs.
+    /// Admin only.
+    /// </summary>
+    [HttpPost("bulk-delete")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> BulkDeleteArticles([FromBody] BulkArticleRequest request)
+    {
+        try
+        {
+            if (request.Ids == null || request.Ids.Count == 0)
+            {
+                return BadRequest(new { error = "No article IDs provided" });
+            }
+
+            var deletedCount = await _articleRepository.DeleteManyAsync(request.Ids);
+
+            return Ok(new { message = $"{deletedCount} articles deleted successfully", deletedCount });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error bulk deleting articles");
+            return StatusCode(500, new { error = "Failed to delete articles" });
+        }
+    }
+
+    /// <summary>
+    /// Hides or unhides a single article.
+    /// Admin only.
+    /// </summary>
+    [HttpPatch("{id}/hidden")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetArticleHidden(string id, [FromBody] SetHiddenRequest request)
+    {
+        try
+        {
+            var updated = await _articleRepository.SetHiddenAsync(id, request.IsHidden);
+
+            if (!updated)
+            {
+                return NotFound(new { error = $"Article with ID '{id}' not found" });
+            }
+
+            return Ok(new { message = $"Article {(request.IsHidden ? "hidden" : "unhidden")} successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating hidden status for article {ArticleId}", id);
+            return StatusCode(500, new { error = "Failed to update article" });
+        }
+    }
+
+    /// <summary>
+    /// Hides or unhides multiple articles.
+    /// Admin only.
+    /// </summary>
+    [HttpPost("bulk-hidden")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> BulkSetArticlesHidden([FromBody] BulkHiddenRequest request)
+    {
+        try
+        {
+            if (request.Ids == null || request.Ids.Count == 0)
+            {
+                return BadRequest(new { error = "No article IDs provided" });
+            }
+
+            var updatedCount = await _articleRepository.SetHiddenManyAsync(request.Ids, request.IsHidden);
+
+            return Ok(new { message = $"{updatedCount} articles {(request.IsHidden ? "hidden" : "unhidden")} successfully", updatedCount });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error bulk updating hidden status for articles");
+            return StatusCode(500, new { error = "Failed to update articles" });
+        }
+    }
 }
 
 /// <summary>
@@ -198,3 +303,18 @@ public record AgentStepEvent(
     string Content,
     DateTime Timestamp
 );
+
+/// <summary>
+/// Request model for bulk article operations.
+/// </summary>
+public record BulkArticleRequest(List<string> Ids);
+
+/// <summary>
+/// Request model for hiding/unhiding an article.
+/// </summary>
+public record SetHiddenRequest(bool IsHidden);
+
+/// <summary>
+/// Request model for bulk hide/unhide operations.
+/// </summary>
+public record BulkHiddenRequest(List<string> Ids, bool IsHidden);

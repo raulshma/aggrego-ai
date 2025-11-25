@@ -54,6 +54,28 @@ export const articleApi = {
 
   getArticle: (id: string): Promise<Article> =>
     fetchJson(`${API_BASE}/article/${id}`),
+
+  // Admin operations
+  deleteArticle: (id: string): Promise<{ message: string }> =>
+    fetchJsonAuth(`${API_BASE}/article/${id}`, { method: 'DELETE' }),
+
+  bulkDeleteArticles: (ids: string[]): Promise<{ message: string; deletedCount: number }> =>
+    fetchJsonAuth(`${API_BASE}/article/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+
+  setArticleHidden: (id: string, isHidden: boolean): Promise<{ message: string }> =>
+    fetchJsonAuth(`${API_BASE}/article/${id}/hidden`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isHidden }),
+    }),
+
+  bulkSetArticlesHidden: (ids: string[], isHidden: boolean): Promise<{ message: string; updatedCount: number }> =>
+    fetchJsonAuth(`${API_BASE}/article/bulk-hidden`, {
+      method: 'POST',
+      body: JSON.stringify({ ids, isHidden }),
+    }),
 };
 
 // Job API (Admin only)
@@ -81,6 +103,9 @@ export const jobApi = {
 
   getJobHistory: (jobKey: string, limit = 50): Promise<JobExecutionLog[]> =>
     fetchJsonAuth(`${API_BASE}/job/${jobKey}/history?limit=${limit}`),
+
+  deleteJob: (jobKey: string, jobGroup: string): Promise<{ message: string }> =>
+    fetchJsonAuth(`${API_BASE}/job/${jobKey}/${jobGroup}`, { method: 'DELETE' }),
 };
 
 // Feed API (Admin only)

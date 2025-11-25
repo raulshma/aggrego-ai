@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace AggregoAi.ApiService.Services;
@@ -7,12 +8,19 @@ namespace AggregoAi.ApiService.Services;
 /// Implementation of IRssParser that handles RSS 2.0 and Atom feed formats.
 /// Gracefully handles malformed entries by skipping them and reporting errors.
 /// </summary>
-public class RssParser : IRssParser
+public partial class RssParser : IRssParser
 {
     private readonly ILogger<RssParser> _logger;
     
     // Atom namespace
     private static readonly XNamespace AtomNs = "http://www.w3.org/2005/Atom";
+    
+    // Media RSS namespace
+    private static readonly XNamespace MediaNs = "http://search.yahoo.com/mrss/";
+    
+    // Regex for extracting image from HTML content
+    [GeneratedRegex(@"<img[^>]+src=[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
+    private static partial Regex ImageSrcRegex();
     
     // Common date formats used in RSS feeds
     private static readonly string[] DateFormats = 
@@ -163,8 +171,64 @@ public class RssParser : IRssParser
         var description = GetElementValue(item, "description");
         var pubDateStr = GetElementValue(item, "pubDate");
         var pubDate = ParseDate(pubDateStr);
+        var imageUrl = ExtractRssImage(item, description);
 
-        return new ParsedArticle(title, link, description, pubDate, sourceFeedId);
+        return new ParsedArticle(title, link, description, pubDate, sourceFeedId, imageUrl);
+    }
+    
+    private static string? ExtractRssImage(XElement item, string? description)
+    {
+        // 1. Try <enclosure> element (common for podcasts and media)
+        var enclosure = item.Element("enclosure");
+        if (enclosure != null)
+        {
+            var type = enclosure.Attribute("type")?.Value;
+            if (type?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var url = enclosure.Attribute("url")?.Value;
+                if (!string.IsNullOrWhiteSpace(url)) return url;
+            }
+        }
+        
+        // 2. Try <media:content> or <media:thumbnail> (Media RSS)
+        var mediaContent = item.Element(MediaNs + "content");
+        if (mediaContent != null)
+        {
+            var medium = mediaContent.Attribute("medium")?.Value;
+            var type = mediaContent.Attribute("type")?.Value;
+            if (medium == "image" || type?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var url = mediaContent.Attribute("url")?.Value;
+                if (!string.IsNullOrWhiteSpace(url)) return url;
+            }
+        }
+        
+        var mediaThumbnail = item.Element(MediaNs + "thumbnail");
+        if (mediaThumbnail != null)
+        {
+            var url = mediaThumbnail.Attribute("url")?.Value;
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+        
+        // 3. Try <image> element
+        var image = item.Element("image");
+        if (image != null)
+        {
+            var url = image.Element("url")?.Value ?? image.Attribute("url")?.Value;
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+        
+        // 4. Extract from description HTML content
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var match = ImageSrcRegex().Match(description);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        
+        return null;
     }
 
 
@@ -222,8 +286,57 @@ public class RssParser : IRssParser
         var updatedStr = GetAtomElementValue(entry, "updated") ?? 
                         GetAtomElementValue(entry, "published");
         var pubDate = ParseDate(updatedStr);
+        var imageUrl = ExtractAtomImage(entry, description);
 
-        return new ParsedArticle(title, link, description, pubDate, sourceFeedId);
+        return new ParsedArticle(title, link, description, pubDate, sourceFeedId, imageUrl);
+    }
+    
+    private static string? ExtractAtomImage(XElement entry, string? description)
+    {
+        // 1. Try <link rel="enclosure" type="image/*">
+        var links = entry.Elements(AtomNs + "link").Concat(entry.Elements("link"));
+        foreach (var link in links)
+        {
+            var rel = link.Attribute("rel")?.Value;
+            var type = link.Attribute("type")?.Value;
+            if (rel == "enclosure" && type?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var href = link.Attribute("href")?.Value;
+                if (!string.IsNullOrWhiteSpace(href)) return href;
+            }
+        }
+        
+        // 2. Try <media:content> or <media:thumbnail>
+        var mediaContent = entry.Element(MediaNs + "content");
+        if (mediaContent != null)
+        {
+            var medium = mediaContent.Attribute("medium")?.Value;
+            var type = mediaContent.Attribute("type")?.Value;
+            if (medium == "image" || type?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var url = mediaContent.Attribute("url")?.Value;
+                if (!string.IsNullOrWhiteSpace(url)) return url;
+            }
+        }
+        
+        var mediaThumbnail = entry.Element(MediaNs + "thumbnail");
+        if (mediaThumbnail != null)
+        {
+            var url = mediaThumbnail.Attribute("url")?.Value;
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+        
+        // 3. Extract from content HTML
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var match = ImageSrcRegex().Match(description);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        
+        return null;
     }
 
 

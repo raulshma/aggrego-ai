@@ -198,6 +198,30 @@ public class JobController : ControllerBase
             return StatusCode(500, new { error = "Failed to retrieve job history" });
         }
     }
+
+    /// <summary>
+    /// Deletes a job and its triggers.
+    /// </summary>
+    [HttpDelete("{jobKey}/{jobGroup}")]
+    public async Task<ActionResult> DeleteJob(string jobKey, string jobGroup)
+    {
+        try
+        {
+            var success = await _jobManagementService.DeleteJobAsync(jobKey, jobGroup);
+
+            if (!success)
+            {
+                return NotFound(new { error = $"Job '{jobKey}.{jobGroup}' not found or could not be deleted" });
+            }
+
+            return Ok(new { message = $"Job '{jobKey}.{jobGroup}' deleted successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting job {JobKey}.{JobGroup}", jobKey, jobGroup);
+            return StatusCode(500, new { error = "Failed to delete job" });
+        }
+    }
 }
 
 /// <summary>

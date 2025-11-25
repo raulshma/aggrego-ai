@@ -13,6 +13,8 @@ export interface Article {
   verificationStatus: VerificationStatus;
   verdict: VerificationVerdict | null;
   tags: string[];
+  imageUrl: string | null;
+  isHidden: boolean;
 }
 
 export const VerificationStatus = {

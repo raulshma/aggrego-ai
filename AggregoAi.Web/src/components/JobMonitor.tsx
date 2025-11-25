@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   RefreshCw, Play, Pause, Zap, History, Clock, CheckCircle, 
-  XCircle, AlertCircle, Loader2, Pencil, X, Check 
+  XCircle, AlertCircle, Loader2, Pencil, X, Check, Trash2 
 } from 'lucide-react';
 
 export function JobMonitor() {
@@ -111,6 +112,21 @@ export function JobMonitor() {
     }
   };
 
+  const handleDelete = async (job: JobInfo) => {
+    if (!confirm(`Are you sure you want to delete job "${job.jobKey}"? This cannot be undone.`)) return;
+    
+    const key = `${job.jobKey}.${job.jobGroup}`;
+    setActionLoading(key);
+    try {
+      await jobApi.deleteJob(job.jobKey, job.jobGroup);
+      await loadJobs();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete job');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const startEditCron = (job: JobInfo) => {
     setEditingCron(`${job.jobKey}.${job.jobGroup}`);
     setCronValue(job.cronExpression);
@@ -161,6 +177,7 @@ export function JobMonitor() {
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -168,10 +185,15 @@ export function JobMonitor() {
           <h2 className="text-2xl font-bold">Job Monitor</h2>
           <p className="text-muted-foreground text-sm">Monitor and control scheduled tasks</p>
         </div>
-        <Button onClick={loadJobs} variant="outline" size="sm" disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={loadJobs} variant="outline" size="sm" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh job status</TooltipContent>
+        </Tooltip>
       </div>
 
       {error && (
@@ -182,6 +204,17 @@ export function JobMonitor() {
       )}
 
       {/* Jobs Grid */}
+      {jobs.length === 0 && !loading ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="font-semibold mb-2">No jobs found</h3>
+            <p className="text-muted-foreground text-sm">Jobs will appear here when RSS feeds are configured.</p>
+          </CardContent>
+        </Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2">
         {jobs.map((job) => {
           const key = `${job.jobKey}.${job.jobGroup}`;
@@ -250,28 +283,57 @@ export function JobMonitor() {
                 {/* Actions */}
                 <div className="flex gap-2">
                   {job.isPaused ? (
-                    <Button onClick={() => handleResume(job)} disabled={isLoading} variant="outline" size="sm" className="flex-1">
-                      <Play className="w-4 h-4 mr-1" />
-                      Resume
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button onClick={() => handleResume(job)} disabled={isLoading} variant="outline" size="sm" className="flex-1">
+                          <Play className="w-4 h-4 mr-1" />
+                          Resume
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Resume this job</TooltipContent>
+                    </Tooltip>
                   ) : (
-                    <Button onClick={() => handlePause(job)} disabled={isLoading} variant="outline" size="sm" className="flex-1">
-                      <Pause className="w-4 h-4 mr-1" />
-                      Pause
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button onClick={() => handlePause(job)} disabled={isLoading} variant="outline" size="sm" className="flex-1">
+                          <Pause className="w-4 h-4 mr-1" />
+                          Pause
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Pause this job</TooltipContent>
+                    </Tooltip>
                   )}
-                  <Button onClick={() => handleTrigger(job)} disabled={isLoading} variant="outline" size="sm">
-                    <Zap className="w-4 h-4" />
-                  </Button>
-                  <Button onClick={() => handleViewHistory(job)} variant="outline" size="sm">
-                    <History className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={() => handleTrigger(job)} disabled={isLoading} variant="outline" size="sm">
+                        <Zap className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Trigger job now</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={() => handleViewHistory(job)} variant="outline" size="sm">
+                        <History className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>View execution history</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={() => handleDelete(job)} disabled={isLoading} variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete this job</TooltipContent>
+                  </Tooltip>
                 </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
+      )}
 
       {/* History Dialog */}
       <Dialog open={!!selectedJob} onOpenChange={() => setSelectedJob(null)}>
@@ -320,5 +382,6 @@ export function JobMonitor() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }

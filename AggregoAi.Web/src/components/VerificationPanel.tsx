@@ -3,6 +3,7 @@ import type { Article, AgentStepEvent } from '../types/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { X, Brain, Wrench, Eye, CheckCircle, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface VerificationPanelProps {
@@ -150,6 +151,7 @@ export function VerificationPanel({ article, onClose }: VerificationPanelProps) 
   if (!article) return null;
 
   return (
+    <TooltipProvider>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
@@ -170,9 +172,14 @@ export function VerificationPanel({ article, onClose }: VerificationPanelProps) 
               <p className="text-xs text-muted-foreground">Analyzing article credibility</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleClose}>
-            <X className="w-5 h-5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={handleClose}>
+                <X className="w-5 h-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Close panel</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Article Info */}
@@ -254,5 +261,6 @@ export function VerificationPanel({ article, onClose }: VerificationPanelProps) 
         </div>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
