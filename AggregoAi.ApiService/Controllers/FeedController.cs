@@ -1,6 +1,7 @@
 using AggregoAi.ApiService.Models;
 using AggregoAi.ApiService.Repositories;
 using AggregoAi.ApiService.Scheduling;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AggregoAi.ApiService.Controllers;
@@ -11,6 +12,7 @@ namespace AggregoAi.ApiService.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
 public class FeedController : ControllerBase
 {
     private readonly IFeedConfigRepository _feedConfigRepository;

@@ -1,5 +1,6 @@
 using AggregoAi.ApiService.Models;
 using AggregoAi.ApiService.Scheduling;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AggregoAi.ApiService.Controllers;
@@ -10,6 +11,7 @@ namespace AggregoAi.ApiService.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
 public class JobController : ControllerBase
 {
     private readonly IJobManagementService _jobManagementService;
