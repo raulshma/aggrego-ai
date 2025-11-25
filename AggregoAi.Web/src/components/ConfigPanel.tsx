@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { configApi } from '../services/api';
 import type { SystemConfig, AiConfig, SearchConfig } from '../types/api';
+import { ModelSelector } from './ModelSelector';
 import './ConfigPanel.css';
 
 export function ConfigPanel() {
@@ -111,12 +112,12 @@ export function ConfigPanel() {
         <h3>AI Settings</h3>
         <div className="form-group">
           <label htmlFor="modelString">Model</label>
-          <input
-            id="modelString"
-            type="text"
+          <ModelSelector
             value={aiConfig.modelString}
-            onChange={(e) => setAiConfig(prev => ({ ...prev, modelString: e.target.value }))}
-            placeholder="e.g., gpt-4, gpt-3.5-turbo"
+            onChange={(modelId) => setAiConfig(prev => ({ ...prev, modelString: modelId }))}
+            onContextLengthChange={(contextLength) =>
+              setAiConfig(prev => ({ ...prev, maxContextTokens: contextLength }))
+            }
           />
         </div>
         <div className="form-group">

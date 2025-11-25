@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <!-- Suppress Semantic Kernel experimental API warnings -->
     <NoWarn>$(NoWarn);SKEXP0010;SKEXP0001;SKEXP0050</NoWarn>
+    <UserSecretsId>072aef5f-e5da-4708-b02c-83d5a032aa25</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
