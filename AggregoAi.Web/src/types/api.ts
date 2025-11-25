@@ -15,6 +15,13 @@ export interface Article {
   tags: string[];
   imageUrl: string | null;
   isHidden: boolean;
+  analysisResult: ArticleAnalysisResult | null;
+}
+
+export interface ArticleAnalysisResult {
+  factCheckResult: string | null;
+  biasResult: string | null;
+  analyzedAt: string;
 }
 
 export const VerificationStatus = {
@@ -159,4 +166,50 @@ export interface AgentStepEvent {
   type: 'Thought' | 'Action' | 'Observation' | 'FinalAnswer' | 'error';
   content: string;
   timestamp: string;
+}
+
+// Analysis types for fact-checking and bias detection
+export interface AnalysisStepEvent {
+  type: 'Thought' | 'Action' | 'Observation' | 'result' | 'error';
+  content: string;
+  timestamp: string;
+  panel: 'factcheck' | 'bias';
+}
+
+export interface FactCheckResult {
+  status: 'verified' | 'partially_verified' | 'unverified' | 'misleading';
+  summary: string;
+  claims: ClaimCheck[];
+  sources: SourceReference[];
+}
+
+export interface ClaimCheck {
+  claim: string;
+  verdict: 'true' | 'mostly_true' | 'mixed' | 'mostly_false' | 'false' | 'unverifiable';
+  explanation: string;
+  sources: string[];
+}
+
+export interface SourceReference {
+  title: string;
+  url: string;
+  relevance: string;
+  publishedDate?: string;
+}
+
+export type BiasLevel = 'far_left' | 'left' | 'center_left' | 'center' | 'center_right' | 'right' | 'far_right';
+
+export interface BiasAnalysisResult {
+  overallBias: BiasLevel;
+  confidence: number;
+  indicators: BiasIndicator[];
+  context: string;
+  regionalContext?: string; // Specific context for Indian news
+}
+
+export interface BiasIndicator {
+  type: 'language' | 'framing' | 'source_selection' | 'omission' | 'emotional_appeal';
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  leaning: 'left' | 'right' | 'neutral';
 }

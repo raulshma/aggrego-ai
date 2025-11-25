@@ -134,8 +134,13 @@ export function JobMonitor() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, {
+    // Parse as UTC if no timezone indicator, then display in local time
+    let date = new Date(dateString);
+    if (!dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-', 10)) {
+      // No timezone info - assume UTC
+      date = new Date(dateString + 'Z');
+    }
+    return date.toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

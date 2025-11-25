@@ -137,14 +137,20 @@ public class FeedController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult<RssFeedConfig>> UpdateFeed(string id, [FromBody] UpdateFeedRequest request)
     {
+        _logger.LogInformation("UpdateFeed called for {FeedId} with request: {@Request}", id, request);
+        
         try
         {
+            _logger.LogInformation("Fetching existing feed {FeedId}", id);
             var existingFeed = await _feedConfigRepository.GetByIdAsync(id);
             
             if (existingFeed == null)
             {
+                _logger.LogWarning("Feed {FeedId} not found", id);
                 return NotFound(new { error = $"Feed with ID '{id}' not found" });
             }
+
+            _logger.LogInformation("Found existing feed: {@ExistingFeed}", existingFeed);
 
             var updatedFeed = existingFeed with
             {
@@ -156,19 +162,27 @@ public class FeedController : ControllerBase
                 MisfireInstruction = request.MisfireInstruction ?? existingFeed.MisfireInstruction
             };
 
+            _logger.LogInformation("Updating feed with: {@UpdatedFeed}", updatedFeed);
             var result = await _feedConfigRepository.UpdateAsync(updatedFeed);
             
             if (result == null)
             {
-                return StatusCode(500, new { error = "Failed to update feed" });
+                _logger.LogWarning("UpdateAsync returned null for feed {FeedId}", id);
+                return StatusCode(500, new { error = "Failed to update feed - no document was modified" });
             }
 
+            _logger.LogInformation("Feed {FeedId} updated successfully", id);
             return Ok(result);
+        }
+        catch (MongoDB.Driver.MongoWriteException ex) when (ex.WriteError?.Category == MongoDB.Driver.ServerErrorCategory.DuplicateKey)
+        {
+            _logger.LogWarning(ex, "Duplicate URL when updating feed {FeedId}", id);
+            return Conflict(new { error = "A feed with this URL already exists" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating feed {FeedId}", id);
-            return StatusCode(500, new { error = "Failed to update feed" });
+            _logger.LogError(ex, "Error updating feed {FeedId}: {Message}", id, ex.Message);
+            return StatusCode(500, new { error = $"Failed to update feed: {ex.Message}" });
         }
     }
 

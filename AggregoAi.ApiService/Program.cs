@@ -28,14 +28,15 @@ builder.Services.AddHttpClient<IRssFetcher, RssFetcher>(client =>
 });
 builder.Services.AddSingleton<IRssParser, RssParser>();
 
-// Register AI services with Semantic Kernel
-builder.Services.AddSingleton<ISemanticKernelService, SemanticKernelService>();
+// Register AI services with Microsoft.Extensions.AI (OpenRouter)
+builder.Services.AddSingleton<IAiChatService, AiChatService>();
 builder.Services.AddHttpClient<ISearXNGTool, SearXNGTool>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddSingleton<IArticleSearchTool, ArticleSearchTool>();
 builder.Services.AddSingleton<IFactCheckAgent, FactCheckAgent>();
+builder.Services.AddSingleton<IArticleAnalysisAgent, ArticleAnalysisAgent>();
 
 // Add Quartz.NET scheduler with MongoDB persistence
 builder.Services.AddQuartzScheduler(builder.Configuration);

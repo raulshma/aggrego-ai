@@ -154,4 +154,10 @@ public class MongoArticleRepository : IArticleRepository
             .Set(a => a.Verdict, verdict);
         await _collection.UpdateOneAsync(a => a.Id == id, update);
     }
+
+    public async Task UpdateAnalysisResultAsync(string id, ArticleAnalysisResult result)
+    {
+        var update = Builders<Article>.Update.Set(a => a.AnalysisResult, result);
+        await _collection.UpdateOneAsync(a => a.Id == id, update);
+    }
 }

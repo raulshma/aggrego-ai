@@ -40,3 +40,12 @@ public enum AgentStepType
     /// <summary>The final verification verdict.</summary>
     FinalAnswer
 }
+
+/// <summary>
+/// Represents a citation/source used in fact-checking.
+/// </summary>
+public record Citation(
+    string Source,
+    string Url,
+    string Excerpt
+);

@@ -1,7 +1,9 @@
+using AggregoAi.ApiService.AI;
 using AggregoAi.ApiService.Models;
 using AggregoAi.ApiService.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.AI;
 
 namespace AggregoAi.ApiService.Controllers;
 
@@ -15,13 +17,16 @@ namespace AggregoAi.ApiService.Controllers;
 public class ConfigController : ControllerBase
 {
     private readonly ISystemConfigRepository _configRepository;
+    private readonly IAiChatService _aiChatService;
     private readonly ILogger<ConfigController> _logger;
 
     public ConfigController(
         ISystemConfigRepository configRepository,
+        IAiChatService aiChatService,
         ILogger<ConfigController> logger)
     {
         _configRepository = configRepository;
+        _aiChatService = aiChatService;
         _logger = logger;
     }
 
@@ -113,6 +118,51 @@ public class ConfigController : ControllerBase
         {
             _logger.LogError(ex, "Error updating AI configuration");
             return StatusCode(500, new { error = "Failed to update AI configuration" });
+        }
+    }
+
+    /// <summary>
+    /// Tests the AI connection with a simple prompt.
+    /// </summary>
+    [HttpPost("ai/test")]
+    public async Task<ActionResult> TestAiConnection()
+    {
+        try
+        {
+            var chatClient = await _aiChatService.GetChatClientAsync();
+            var options = await _aiChatService.GetChatOptionsAsync();
+            
+            var messages = new List<ChatMessage>
+            {
+                new(ChatRole.User, "Say 'Hello, AI connection successful!' in exactly those words.")
+            };
+
+            var chatOptions = new ChatOptions
+            {
+                Temperature = options.Temperature,
+                MaxOutputTokens = 50
+            };
+
+            _logger.LogInformation("Testing AI connection with model: {Model}", options.ModelId);
+            
+            var response = await chatClient.GetResponseAsync(messages, chatOptions);
+            
+            return Ok(new 
+            { 
+                success = true, 
+                model = options.ModelId,
+                response = response.Text 
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI connection test failed");
+            return Ok(new 
+            { 
+                success = false, 
+                error = ex.Message,
+                innerError = ex.InnerException?.Message
+            });
         }
     }
 

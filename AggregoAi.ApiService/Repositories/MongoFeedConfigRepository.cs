@@ -54,8 +54,10 @@ public class MongoFeedConfigRepository : IFeedConfigRepository
         var result = await _collection.ReplaceOneAsync(
             f => f.Id == config.Id,
             config);
-            
-        return result.ModifiedCount > 0 ? config : null;
+        
+        // MatchedCount > 0 means document was found (even if no changes were made)
+        // ModifiedCount can be 0 if the document content is identical
+        return result.MatchedCount > 0 ? config : null;
     }
 
     public async Task<bool> DeleteAsync(string id)

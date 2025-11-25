@@ -1,325 +1,177 @@
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
-using AggregoAi.ApiService.Models;
-using AggregoAi.ApiService.Repositories;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.Extensions.AI;
 
 namespace AggregoAi.ApiService.AI;
 
 /// <summary>
-/// Implementation of IFactCheckAgent using the ReAct (Reason-Act) pattern.
-/// Uses Semantic Kernel for LLM interactions and tools for external data.
+/// Implementation of IFactCheckAgent using streaming and native tool calling.
+/// Uses Microsoft.Extensions.AI with OpenRouter.
 /// </summary>
-public partial class FactCheckAgent : IFactCheckAgent
+public partial class FactCheckAgent(
+    IAiChatService aiChatService,
+    ISearXNGTool searxngTool,
+    IArticleSearchTool articleSearchTool,
+    ILogger<FactCheckAgent> logger) : IFactCheckAgent
 {
-    private readonly ISemanticKernelService _kernelService;
-    private readonly ISearXNGTool _searxngTool;
-    private readonly IArticleSearchTool _articleSearchTool;
-    private readonly ISystemConfigRepository _configRepository;
-    private readonly ILogger<FactCheckAgent> _logger;
-
-    private const int MaxIterations = 10;
+    private const int MaxToolIterations = 6;
+    
     private const string SystemPrompt = """
-        You are a fact-checking AI assistant. Your task is to verify the claims made in news articles.
+        You are a fact-checking AI assistant. Verify claims in news articles using the available tools.
         
-        You have access to the following tools:
-        1. web_search(query) - Search the web for information using SearXNG
-        2. article_search(claim) - Search for similar articles in our database
+        Use tools to search for corroborating or contradicting information, then provide your verdict.
         
-        Use the ReAct pattern to reason through the verification:
-        1. THOUGHT: Analyze what you need to verify and plan your approach
-        2. ACTION: Call a tool to gather information (format: ACTION: tool_name(argument))
-        3. OBSERVATION: Review the results from the tool
-        4. Repeat steps 1-3 as needed
-        5. FINAL ANSWER: Provide your verdict with supporting evidence
-        
-        When you have enough information, provide your final answer in this exact format:
-        FINAL ANSWER:
-        Assessment: [Your detailed assessment of the article's accuracy]
+        Final response format:
+        Assessment: [Your detailed assessment]
         Confidence: [Low/Medium/High]
         Citations:
-        - Source: [source name], URL: [url], Excerpt: [relevant excerpt]
-        
-        Be thorough but efficient. Aim to verify key claims with 2-4 tool calls.
+        - Source: [name], URL: [url], Excerpt: [relevant text]
         """;
 
-    public FactCheckAgent(
-        ISemanticKernelService kernelService,
-        ISearXNGTool searxngTool,
-        IArticleSearchTool articleSearchTool,
-        ISystemConfigRepository configRepository,
-        ILogger<FactCheckAgent> logger)
-    {
-        _kernelService = kernelService;
-        _searxngTool = searxngTool;
-        _articleSearchTool = articleSearchTool;
-        _configRepository = configRepository;
-        _logger = logger;
-    }
-
-
     public async IAsyncEnumerable<AgentStep> VerifyArticleAsync(
-        Article article, 
+        Models.Article article, 
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var kernel = await _kernelService.GetKernelAsync();
-        var aiConfig = await _configRepository.GetAiConfigAsync();
-        var chatService = kernel.GetRequiredService<IChatCompletionService>();
+        var chatClient = await aiChatService.GetChatClientAsync();
+        var options = await aiChatService.GetChatOptionsAsync();
         
-        var chatHistory = new ChatHistory();
-        chatHistory.AddSystemMessage(SystemPrompt);
-        
-        // Initial user message with article content
-        var userMessage = $"""
-            Please verify the following news article:
-            
-            Title: {article.Title}
-            Source: {article.SourceFeedName ?? article.SourceFeedId}
-            Published: {article.PublicationDate:yyyy-MM-dd}
-            
-            Content:
-            {article.Description ?? "(No description available)"}
-            
-            Link: {article.Link}
-            
-            Analyze the key claims and verify their accuracy using the available tools.
-            """;
-        
-        chatHistory.AddUserMessage(userMessage);
-        
-        var citations = new List<Citation>();
-        var iteration = 0;
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, SystemPrompt),
+            new(ChatRole.User, $"""
+                Verify this article:
+                Title: {article.Title}
+                Source: {article.SourceFeedName ?? article.SourceFeedId}
+                Published: {article.PublicationDate:yyyy-MM-dd}
+                Content: {article.Description ?? "(No description)"}
+                Link: {article.Link}
+                """)
+        };
 
-        while (iteration < MaxIterations && !cancellationToken.IsCancellationRequested)
+        var tools = new List<AITool>
+        {
+            AIFunctionFactory.Create((string query) => query, "web_search", "Search the web"),
+            AIFunctionFactory.Create((string query) => query, "article_search", "Search articles")
+        };
+
+        var chatOptions = new ChatOptions
+        {
+            Temperature = options.Temperature,
+            MaxOutputTokens = options.MaxTokens,
+            Tools = tools,
+            ToolMode = ChatToolMode.Auto
+        };
+
+        var iteration = 0;
+        while (iteration < MaxToolIterations && !cancellationToken.IsCancellationRequested)
         {
             iteration++;
-            _logger.LogDebug("ReAct iteration {Iteration}", iteration);
+            var streamResult = await CollectStreamingResponseAsync(chatClient, messages, chatOptions, cancellationToken);
 
-            // Get LLM response
-            var settings = new PromptExecutionSettings
+            if (streamResult.Error != null)
             {
-                ExtensionData = new Dictionary<string, object>
-                {
-                    ["temperature"] = aiConfig.Temperature,
-                    ["max_tokens"] = Math.Min(aiConfig.MaxContextTokens, 2048)
-                }
-            };
-
-            var response = await chatService.GetChatMessageContentAsync(
-                chatHistory, 
-                settings, 
-                kernel, 
-                cancellationToken);
-
-            var responseText = response.Content ?? "";
-            chatHistory.AddAssistantMessage(responseText);
-
-
-            // Parse and yield steps from the response
-            var steps = ParseReActResponse(responseText);
-            foreach (var step in steps)
-            {
-                yield return step;
-                
-                // If this is a final answer, we're done
-                if (step.Type == AgentStepType.FinalAnswer)
-                {
-                    yield break;
-                }
+                yield return new AgentStep(AgentStepType.FinalAnswer, $"Error: {streamResult.Error}", DateTime.UtcNow);
+                yield break;
             }
 
-            // Check for action and execute tool
-            var actionMatch = ActionRegex().Match(responseText);
-            if (actionMatch.Success)
+            // Add to history
+            if (!string.IsNullOrEmpty(streamResult.Text) || streamResult.ToolCalls.Count > 0)
             {
-                var toolName = actionMatch.Groups[1].Value.Trim().ToLowerInvariant();
-                var argument = actionMatch.Groups[2].Value.Trim();
-                
-                yield return new AgentStep(
-                    AgentStepType.Action,
-                    $"Calling {toolName} with: {argument}",
-                    DateTime.UtcNow);
-
-                var observation = await ExecuteToolAsync(toolName, argument, citations, cancellationToken);
-                
-                yield return new AgentStep(
-                    AgentStepType.Observation,
-                    observation,
-                    DateTime.UtcNow);
-
-                // Add observation to chat history for next iteration
-                chatHistory.AddUserMessage($"OBSERVATION: {observation}");
+                var contents = new List<AIContent>();
+                if (!string.IsNullOrEmpty(streamResult.Text))
+                    contents.Add(new TextContent(streamResult.Text));
+                contents.AddRange(streamResult.ToolCalls);
+                messages.Add(new ChatMessage(ChatRole.Assistant, contents));
             }
-            else if (!responseText.Contains("FINAL ANSWER", StringComparison.OrdinalIgnoreCase))
+
+            // Handle tool calls
+            if (streamResult.ToolCalls.Count > 0)
             {
-                // No action and no final answer - prompt for continuation
-                chatHistory.AddUserMessage("Please continue with your analysis. Use ACTION to call a tool or provide your FINAL ANSWER.");
+                var results = new List<AIContent>();
+                foreach (var tc in streamResult.ToolCalls)
+                {
+                    var arg = tc.Arguments?.Values.FirstOrDefault()?.ToString() ?? "";
+                    yield return new AgentStep(AgentStepType.Action, $"{tc.Name}({arg})", DateTime.UtcNow);
+
+                    var result = tc.Name switch
+                    {
+                        "web_search" => await ExecuteWebSearch(arg, cancellationToken),
+                        "article_search" => await ExecuteArticleSearch(arg, cancellationToken),
+                        _ => "Unknown tool"
+                    };
+
+                    results.Add(new FunctionResultContent(tc.CallId, result));
+                    yield return new AgentStep(AgentStepType.Observation, TruncateText(result, 400), DateTime.UtcNow);
+                }
+                messages.Add(new ChatMessage(ChatRole.Tool, results));
+                continue;
+            }
+
+            // Final response
+            if (!string.IsNullOrEmpty(streamResult.Text))
+            {
+                yield return new AgentStep(AgentStepType.FinalAnswer, streamResult.Text, DateTime.UtcNow);
+                yield break;
             }
         }
 
-        // If we hit max iterations without a final answer, generate one
-        if (iteration >= MaxIterations)
-        {
-            _logger.LogWarning("ReAct agent hit max iterations without final answer");
-            yield return new AgentStep(
-                AgentStepType.FinalAnswer,
-                "Unable to complete verification within iteration limit. Please try again.",
-                DateTime.UtcNow);
-        }
+        yield return new AgentStep(AgentStepType.FinalAnswer, "Max iterations reached", DateTime.UtcNow);
     }
 
-
-    private async Task<string> ExecuteToolAsync(
-        string toolName, 
-        string argument, 
-        List<Citation> citations,
+    private async Task<StreamResult> CollectStreamingResponseAsync(
+        IChatClient chatClient,
+        List<ChatMessage> messages,
+        ChatOptions chatOptions,
         CancellationToken cancellationToken)
     {
+        var responseBuilder = new StringBuilder();
+        var toolCalls = new List<FunctionCallContent>();
+
         try
         {
-            return toolName switch
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions, cancellationToken))
             {
-                "web_search" => await ExecuteWebSearchAsync(argument, citations, cancellationToken),
-                "article_search" => await ExecuteArticleSearchAsync(argument, citations, cancellationToken),
-                _ => $"Unknown tool: {toolName}. Available tools: web_search, article_search"
-            };
+                if (!string.IsNullOrEmpty(update.Text))
+                    responseBuilder.Append(update.Text);
+
+                foreach (var content in update.Contents)
+                {
+                    if (content is FunctionCallContent fc)
+                        toolCalls.Add(fc);
+                }
+            }
+            return new StreamResult(responseBuilder.ToString(), toolCalls, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing tool {Tool} with argument {Argument}", toolName, argument);
-            return $"Error executing {toolName}: {ex.Message}";
+            logger.LogError(ex, "Streaming error");
+            return new StreamResult("", [], ex.Message);
         }
     }
 
-    private async Task<string> ExecuteWebSearchAsync(
-        string query, 
-        List<Citation> citations,
-        CancellationToken cancellationToken)
+    private async Task<string> ExecuteWebSearch(string query, CancellationToken ct)
     {
-        var result = await _searxngTool.SearchAsync(query, cancellationToken: cancellationToken);
-        
-        if (result.Items.Count == 0)
-        {
-            return "No search results found.";
-        }
-
+        var result = await searxngTool.SearchAsync(query, cancellationToken: ct);
+        if (result.Items.Count == 0) return "No results.";
         var sb = new StringBuilder();
-        sb.AppendLine($"Found {result.Items.Count} results:");
-        
-        foreach (var item in result.Items.Take(5))
-        {
-            sb.AppendLine($"- {item.Title}");
-            sb.AppendLine($"  URL: {item.Url}");
-            sb.AppendLine($"  {TruncateText(item.Content, 200)}");
-            sb.AppendLine();
-            
-            // Add to citations
-            citations.Add(new Citation(item.Title, item.Url, TruncateText(item.Content, 100)));
-        }
-
+        foreach (var i in result.Items.Take(5))
+            sb.AppendLine($"- {i.Title}: {TruncateText(i.Content, 150)} ({i.Url})");
         return sb.ToString();
     }
 
-    private async Task<string> ExecuteArticleSearchAsync(
-        string claim, 
-        List<Citation> citations,
-        CancellationToken cancellationToken)
+    private async Task<string> ExecuteArticleSearch(string query, CancellationToken ct)
     {
-        var articles = await _articleSearchTool.FindSimilarAsync(claim, 5, cancellationToken);
-        var articleList = articles.ToList();
-        
-        if (articleList.Count == 0)
-        {
-            return "No similar articles found in our database.";
-        }
-
+        var articles = await articleSearchTool.FindSimilarAsync(query, 5, ct);
+        var list = articles.ToList();
+        if (list.Count == 0) return "No articles found.";
         var sb = new StringBuilder();
-        sb.AppendLine($"Found {articleList.Count} similar articles:");
-        
-        foreach (var article in articleList)
-        {
-            sb.AppendLine($"- {article.Title}");
-            sb.AppendLine($"  Source: {article.SourceFeedName ?? article.SourceFeedId}");
-            sb.AppendLine($"  Published: {article.PublicationDate:yyyy-MM-dd}");
-            sb.AppendLine($"  {TruncateText(article.Description ?? "", 150)}");
-            sb.AppendLine();
-            
-            // Add to citations
-            citations.Add(new Citation(
-                article.SourceFeedName ?? article.SourceFeedId,
-                article.Link,
-                TruncateText(article.Description ?? article.Title, 100)));
-        }
-
+        foreach (var a in list)
+            sb.AppendLine($"- {a.Title} ({a.SourceFeedName}): {TruncateText(a.Description ?? "", 100)}");
         return sb.ToString();
     }
 
+    private static string TruncateText(string text, int max) =>
+        string.IsNullOrEmpty(text) || text.Length <= max ? text : text[..(max - 3)] + "...";
 
-    private static List<AgentStep> ParseReActResponse(string response)
-    {
-        var steps = new List<AgentStep>();
-        var lines = response.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var currentType = AgentStepType.Thought;
-        var currentContent = new StringBuilder();
-
-        foreach (var line in lines)
-        {
-            var trimmedLine = line.Trim();
-            
-            if (trimmedLine.StartsWith("THOUGHT:", StringComparison.OrdinalIgnoreCase))
-            {
-                FlushCurrentStep(steps, currentType, currentContent);
-                currentType = AgentStepType.Thought;
-                currentContent.AppendLine(trimmedLine[8..].Trim());
-            }
-            else if (trimmedLine.StartsWith("ACTION:", StringComparison.OrdinalIgnoreCase))
-            {
-                FlushCurrentStep(steps, currentType, currentContent);
-                currentType = AgentStepType.Action;
-                currentContent.AppendLine(trimmedLine[7..].Trim());
-            }
-            else if (trimmedLine.StartsWith("OBSERVATION:", StringComparison.OrdinalIgnoreCase))
-            {
-                FlushCurrentStep(steps, currentType, currentContent);
-                currentType = AgentStepType.Observation;
-                currentContent.AppendLine(trimmedLine[12..].Trim());
-            }
-            else if (trimmedLine.StartsWith("FINAL ANSWER:", StringComparison.OrdinalIgnoreCase))
-            {
-                FlushCurrentStep(steps, currentType, currentContent);
-                currentType = AgentStepType.FinalAnswer;
-                currentContent.AppendLine(trimmedLine[13..].Trim());
-            }
-            else if (currentContent.Length > 0 || !string.IsNullOrWhiteSpace(trimmedLine))
-            {
-                currentContent.AppendLine(trimmedLine);
-            }
-        }
-
-        FlushCurrentStep(steps, currentType, currentContent);
-        return steps;
-    }
-
-    private static void FlushCurrentStep(List<AgentStep> steps, AgentStepType type, StringBuilder content)
-    {
-        var text = content.ToString().Trim();
-        if (!string.IsNullOrEmpty(text))
-        {
-            steps.Add(new AgentStep(type, text, DateTime.UtcNow));
-        }
-        content.Clear();
-    }
-
-    private static string TruncateText(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text;
-        return text[..(maxLength - 3)] + "...";
-    }
-
-    [GeneratedRegex(@"ACTION:\s*(\w+)\s*\(\s*(.+?)\s*\)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
-    private static partial Regex ActionRegex();
+    private record StreamResult(string Text, List<FunctionCallContent> ToolCalls, string? Error);
 }

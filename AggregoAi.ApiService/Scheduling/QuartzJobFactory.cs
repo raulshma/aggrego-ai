@@ -1,3 +1,4 @@
+using AggregoAi.ApiService.Repositories;
 using AggregoAi.ApiService.Scheduling.Jobs;
 using Quartz;
 using MisfireInstruction = AggregoAi.ApiService.Models.MisfireInstruction;
@@ -14,6 +15,7 @@ public class QuartzJobFactory : IJobFactory
 {
     private readonly ISchedulerFactory _schedulerFactory;
     private readonly IJobPersistenceService _persistenceService;
+    private readonly IFeedConfigRepository _feedConfigRepository;
     private readonly ILogger<QuartzJobFactory> _logger;
 
     public const string IngestionJobGroup = "IngestionJobs";
@@ -22,10 +24,12 @@ public class QuartzJobFactory : IJobFactory
     public QuartzJobFactory(
         ISchedulerFactory schedulerFactory,
         IJobPersistenceService persistenceService,
+        IFeedConfigRepository feedConfigRepository,
         ILogger<QuartzJobFactory> logger)
     {
         _schedulerFactory = schedulerFactory;
         _persistenceService = persistenceService;
+        _feedConfigRepository = feedConfigRepository;
         _logger = logger;
     }
 
@@ -152,25 +156,53 @@ public class QuartzJobFactory : IJobFactory
                     continue;
                 }
 
+                // For ingestion jobs, fetch the feed config to get all required data
+                if (jobType == typeof(IngestionJob))
+                {
+                    var feedId = definition.JobData.GetValueOrDefault("FeedId");
+                    if (string.IsNullOrEmpty(feedId))
+                    {
+                        _logger.LogWarning("FeedId missing for ingestion job {JobKey}", definition.JobKey);
+                        continue;
+                    }
+
+                    var feed = await _feedConfigRepository.GetByIdAsync(feedId);
+                    if (feed == null)
+                    {
+                        _logger.LogWarning("Feed {FeedId} not found for job {JobKey}, skipping restore", feedId, definition.JobKey);
+                        continue;
+                    }
+
+                    var (job, trigger) = await CreateIngestionJobAsync(feed);
+                    await scheduler.ScheduleJob(job, trigger);
+
+                    if (definition.IsPaused)
+                    {
+                        await scheduler.PauseTrigger(trigger.Key);
+                    }
+
+                    _logger.LogInformation("Restored ingestion job {JobKey} for feed {FeedName}", jobKey, feed.Name);
+                    continue;
+                }
+
+                // For other job types, restore from persisted data
                 var jobBuilder = JobBuilder.Create(jobType)
                     .WithIdentity(jobKey)
                     .StoreDurably();
 
-                // Restore job data
                 foreach (var kvp in definition.JobData)
                 {
                     jobBuilder.UsingJobData(kvp.Key, kvp.Value);
                 }
 
-                var job = jobBuilder.Build();
-                var trigger = CreateTrigger(jobKey, definition.CronExpression, definition.MisfireInstruction);
+                var genericJob = jobBuilder.Build();
+                var genericTrigger = CreateTrigger(jobKey, definition.CronExpression, definition.MisfireInstruction);
 
-                await scheduler.ScheduleJob(job, trigger);
+                await scheduler.ScheduleJob(genericJob, genericTrigger);
 
-                // Restore pause state
                 if (definition.IsPaused)
                 {
-                    await scheduler.PauseTrigger(trigger.Key);
+                    await scheduler.PauseTrigger(genericTrigger.Key);
                 }
 
                 _logger.LogInformation("Restored job {JobKey} from persistence", jobKey);
@@ -211,10 +243,10 @@ public class QuartzJobFactory : IJobFactory
     {
         return jobTypeName switch
         {
-            nameof(IngestionJob) => typeof(IngestionJob),
-            nameof(CleanupJob) => typeof(CleanupJob),
-            nameof(AnalyticsJob) => typeof(AnalyticsJob),
-            nameof(SmartTaggingJob) => typeof(SmartTaggingJob),
+            nameof(IngestionJob) or "Ingestion" => typeof(IngestionJob),
+            nameof(CleanupJob) or "Cleanup" => typeof(CleanupJob),
+            nameof(AnalyticsJob) or "Analytics" => typeof(AnalyticsJob),
+            nameof(SmartTaggingJob) or "SmartTagging" => typeof(SmartTaggingJob),
             _ => null
         };
     }

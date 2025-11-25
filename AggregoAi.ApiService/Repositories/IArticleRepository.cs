@@ -21,4 +21,5 @@ public interface IArticleRepository
     Task<IEnumerable<Article>> GetUntaggedAsync(int batchSize);
     Task UpdateTagsAsync(string id, IEnumerable<string> tags);
     Task UpdateVerificationAsync(string id, VerificationStatus status, VerificationVerdict? verdict);
+    Task UpdateAnalysisResultAsync(string id, ArticleAnalysisResult result);
 }

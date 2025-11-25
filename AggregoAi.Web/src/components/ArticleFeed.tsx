@@ -7,13 +7,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { RefreshCw, ExternalLink, Shield, ShieldCheck, ShieldAlert, Clock, Loader2, Trash2, EyeOff, Eye, CheckSquare, Square } from 'lucide-react';
+import { RefreshCw, ExternalLink, Shield, ShieldCheck, ShieldAlert, Clock, Loader2, Trash2, EyeOff, Eye, CheckSquare, Square, BookOpen } from 'lucide-react';
+import { ArticleReader } from './ArticleReader';
 
-interface ArticleFeedProps {
-  onVerifyClick?: (article: Article) => void;
-}
-
-export function ArticleFeed({ onVerifyClick }: ArticleFeedProps) {
+export function ArticleFeed() {
   const { isAuthenticated } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +19,8 @@ export function ArticleFeed({ onVerifyClick }: ArticleFeedProps) {
   const [hasMore, setHasMore] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState(false);
+  const [readerArticle, setReaderArticle] = useState<Article | null>(null);
+  const [readerIndex, setReaderIndex] = useState<number>(-1);
   const limit = 20;
 
   const loadArticles = useCallback(async (newOffset: number, append = false) => {
@@ -134,6 +133,24 @@ export function ArticleFeed({ onVerifyClick }: ArticleFeedProps) {
       alert(err instanceof Error ? err.message : 'Failed to update article');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const openReader = (article: Article, index: number) => {
+    setReaderArticle(article);
+    setReaderIndex(index);
+  };
+
+  const closeReader = () => {
+    setReaderArticle(null);
+    setReaderIndex(-1);
+  };
+
+  const navigateReader = (direction: 'prev' | 'next') => {
+    const newIndex = direction === 'prev' ? readerIndex - 1 : readerIndex + 1;
+    if (newIndex >= 0 && newIndex < articles.length) {
+      setReaderArticle(articles[newIndex]);
+      setReaderIndex(newIndex);
     }
   };
 
@@ -361,24 +378,33 @@ export function ArticleFeed({ onVerifyClick }: ArticleFeedProps) {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 mt-auto pt-3 border-t border-border/50">
-                  {article.verificationStatus !== VerificationStatus.InProgress && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => onVerifyClick?.(article)}
-                          variant="glow"
-                          size="sm"
-                          className="flex-1"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          {article.verificationStatus === VerificationStatus.Verified ? 'Re-verify' : 'Verify'}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {article.verificationStatus === VerificationStatus.Verified ? 'Re-verify this article with AI' : 'Verify this article with AI'}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => openReader(article, articles.indexOf(article))}
+                        variant={article.analysisResult ? "outline" : "glow"}
+                        size="sm"
+                        className="flex-1"
+                      >
+                        {article.analysisResult ? (
+                          <>
+                            <Eye className="w-4 h-4" />
+                            Show Analysis
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4" />
+                            Analyze
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {article.analysisResult 
+                        ? "View saved analysis results" 
+                        : "Open full analysis with fact-check and bias detection"}
+                    </TooltipContent>
+                  </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -434,6 +460,18 @@ export function ArticleFeed({ onVerifyClick }: ArticleFeedProps) {
             )}
           </Button>
         </div>
+      )}
+
+      {/* Article Reader Modal */}
+      {readerArticle && (
+        <ArticleReader
+          article={readerArticle}
+          onClose={closeReader}
+          onPrevious={() => navigateReader('prev')}
+          onNext={() => navigateReader('next')}
+          hasPrevious={readerIndex > 0}
+          hasNext={readerIndex < articles.length - 1}
+        />
       )}
     </div>
     </TooltipProvider>

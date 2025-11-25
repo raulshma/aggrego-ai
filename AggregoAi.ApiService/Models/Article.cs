@@ -47,6 +47,24 @@ public record Article
 
     [BsonElement("isHidden")]
     public bool IsHidden { get; init; } = false;
+
+    [BsonElement("analysisResult")]
+    public ArticleAnalysisResult? AnalysisResult { get; init; }
+}
+
+/// <summary>
+/// Stores the combined fact-check and bias analysis results.
+/// </summary>
+public record ArticleAnalysisResult
+{
+    [BsonElement("factCheckResult")]
+    public string? FactCheckResult { get; init; }
+
+    [BsonElement("biasResult")]
+    public string? BiasResult { get; init; }
+
+    [BsonElement("analyzedAt")]
+    public DateTime AnalyzedAt { get; init; }
 }
 
 public enum VerificationStatus

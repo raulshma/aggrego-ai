@@ -256,13 +256,22 @@ public class JobManagementService : IJobManagementService
         // Get job type name
         var jobType = jobDetail.JobType.Name;
 
+        // Ensure times are properly marked as UTC for correct serialization
+        var lastExecution = persistedDef?.LastExecutionTime;
+        if (lastExecution.HasValue && lastExecution.Value.Kind == DateTimeKind.Unspecified)
+        {
+            lastExecution = DateTime.SpecifyKind(lastExecution.Value, DateTimeKind.Utc);
+        }
+
+        var nextExecution = trigger?.GetNextFireTimeUtc()?.UtcDateTime;
+
         return new JobInfo(
             JobKey: jobKey.Name,
             JobGroup: jobKey.Group,
             JobType: jobType,
             CronExpression: cronExpression,
-            LastExecutionTime: persistedDef?.LastExecutionTime,
-            NextExecutionTime: trigger?.GetNextFireTimeUtc()?.DateTime,
+            LastExecutionTime: lastExecution,
+            NextExecutionTime: nextExecution,
             LastStatus: persistedDef?.LastStatus,
             IsPaused: isPaused
         );

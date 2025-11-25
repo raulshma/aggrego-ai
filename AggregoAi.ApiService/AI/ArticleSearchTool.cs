@@ -1,5 +1,4 @@
 using AggregoAi.ApiService.Models;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace AggregoAi.ApiService.AI;

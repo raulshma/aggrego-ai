@@ -4,6 +4,7 @@ using AggregoAi.ApiService.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AggregoAi.ApiService.Controllers;
 
@@ -17,15 +18,23 @@ public class ArticleController : ControllerBase
 {
     private readonly IArticleRepository _articleRepository;
     private readonly IFactCheckAgent _factCheckAgent;
+    private readonly IArticleAnalysisAgent _analysisAgent;
     private readonly ILogger<ArticleController> _logger;
+    
+    private static readonly JsonSerializerOptions CamelCaseOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public ArticleController(
         IArticleRepository articleRepository,
         IFactCheckAgent factCheckAgent,
+        IArticleAnalysisAgent analysisAgent,
         ILogger<ArticleController> logger)
     {
         _articleRepository = articleRepository;
         _factCheckAgent = factCheckAgent;
+        _analysisAgent = analysisAgent;
         _logger = logger;
     }
 
@@ -123,7 +132,7 @@ public class ArticleController : ControllerBase
                     step.Timestamp
                 );
 
-                var json = JsonSerializer.Serialize(eventData);
+                var json = JsonSerializer.Serialize(eventData, CamelCaseOptions);
                 await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
                 await Response.Body.FlushAsync(cancellationToken);
 
@@ -156,7 +165,7 @@ public class ArticleController : ControllerBase
             await _articleRepository.UpdateVerificationAsync(id, VerificationStatus.NotVerified, null);
             
             var errorEvent = new { type = "error", message = "Verification failed" };
-            var errorJson = JsonSerializer.Serialize(errorEvent);
+            var errorJson = JsonSerializer.Serialize(errorEvent, CamelCaseOptions);
             await Response.WriteAsync($"data: {errorJson}\n\n", cancellationToken);
             await Response.Body.FlushAsync(cancellationToken);
         }
@@ -178,6 +187,119 @@ public class ArticleController : ControllerBase
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the stored analysis result for an article if it exists.
+    /// </summary>
+    [HttpGet("{id}/analysis")]
+    public async Task<ActionResult<ArticleAnalysisResponse>> GetAnalysis(string id)
+    {
+        try
+        {
+            var article = await _articleRepository.GetByIdAsync(id);
+            
+            if (article == null)
+            {
+                return NotFound(new { error = $"Article with ID '{id}' not found" });
+            }
+
+            if (article.AnalysisResult == null)
+            {
+                return NotFound(new { error = "No analysis found for this article" });
+            }
+
+            return Ok(new ArticleAnalysisResponse(
+                article.AnalysisResult.FactCheckResult,
+                article.AnalysisResult.BiasResult,
+                article.AnalysisResult.AnalyzedAt
+            ));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving analysis for article {ArticleId}", id);
+            return StatusCode(500, new { error = "Failed to retrieve analysis" });
+        }
+    }
+
+    /// <summary>
+    /// Performs comprehensive AI analysis of an article including fact-checking and bias detection.
+    /// Streams results for both analysis types in parallel.
+    /// </summary>
+    [HttpPost("{id}/analyze")]
+    public async Task AnalyzeArticle(string id, CancellationToken cancellationToken)
+    {
+        var article = await _articleRepository.GetByIdAsync(id);
+        
+        if (article == null)
+        {
+            Response.StatusCode = 404;
+            await Response.WriteAsJsonAsync(new { error = $"Article with ID '{id}' not found" }, cancellationToken);
+            return;
+        }
+
+        // Set up streaming response
+        Response.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers.Connection = "keep-alive";
+
+        string? factCheckResult = null;
+        string? biasResult = null;
+
+        try
+        {
+            await foreach (var step in _analysisAgent.AnalyzeArticleAsync(article, cancellationToken))
+            {
+                var eventData = new AnalysisStepEvent(
+                    step.Type.ToString(),
+                    step.Content,
+                    step.Timestamp,
+                    step.Panel == AnalysisPanel.FactCheck ? "factcheck" : "bias"
+                );
+
+                // Capture results for storage
+                if (step.Type == AnalysisStepType.Result)
+                {
+                    if (step.Panel == AnalysisPanel.FactCheck)
+                        factCheckResult = step.Content;
+                    else if (step.Panel == AnalysisPanel.Bias)
+                        biasResult = step.Content;
+                }
+
+                var json = JsonSerializer.Serialize(eventData, CamelCaseOptions);
+                await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+            }
+
+            // Store analysis results if we got any
+            if (factCheckResult != null || biasResult != null)
+            {
+                var analysisResult = new ArticleAnalysisResult
+                {
+                    FactCheckResult = factCheckResult,
+                    BiasResult = biasResult,
+                    AnalyzedAt = DateTime.UtcNow
+                };
+                await _articleRepository.UpdateAnalysisResultAsync(id, analysisResult);
+            }
+
+            // Send completion event
+            await Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
+            await Response.Body.FlushAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Analysis cancelled for article {ArticleId}", id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during analysis of article {ArticleId}", id);
+            
+            var errorEvent = new AnalysisStepEvent("error", "Analysis failed", DateTime.UtcNow, "factcheck");
+            var errorJson = JsonSerializer.Serialize(errorEvent, CamelCaseOptions);
+            await Response.WriteAsync($"data: {errorJson}\n\n", cancellationToken);
+            await Response.Body.FlushAsync(cancellationToken);
         }
     }
 
@@ -318,3 +440,22 @@ public record SetHiddenRequest(bool IsHidden);
 /// Request model for bulk hide/unhide operations.
 /// </summary>
 public record BulkHiddenRequest(List<string> Ids, bool IsHidden);
+
+/// <summary>
+/// Event model for streaming analysis steps.
+/// </summary>
+public record AnalysisStepEvent(
+    string Type,
+    string Content,
+    DateTime Timestamp,
+    string Panel
+);
+
+/// <summary>
+/// Response model for stored analysis results.
+/// </summary>
+public record ArticleAnalysisResponse(
+    string? FactCheckResult,
+    string? BiasResult,
+    DateTime AnalyzedAt
+);

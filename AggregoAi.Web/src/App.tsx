@@ -2,14 +2,12 @@ import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { ArticleFeed } from './components/ArticleFeed';
-import { VerificationPanel } from './components/VerificationPanel';
 import { JobMonitor } from './components/JobMonitor';
 import { ConfigPanel } from './components/ConfigPanel';
 import { FeedManager } from './components/FeedManager';
 import { LoginDialog } from './components/LoginDialog';
 import { AuthProvider } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
-import type { Article } from './types/api';
 import { Newspaper, Cog, Rss, Settings2, Sparkles, Lock, LogOut } from 'lucide-react';
 
 type Tab = 'feed' | 'jobs' | 'feeds' | 'config';
@@ -17,16 +15,7 @@ type Tab = 'feed' | 'jobs' | 'feeds' | 'config';
 function AppContent() {
   const { isAuthenticated, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('feed');
-  const [verifyingArticle, setVerifyingArticle] = useState<Article | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-
-  const handleVerifyClick = (article: Article) => {
-    setVerifyingArticle(article);
-  };
-
-  const handleCloseVerification = () => {
-    setVerifyingArticle(null);
-  };
 
   // Compute effective tab - if on admin tab but not authenticated, show feed
   const adminTabs: Tab[] = ['jobs', 'feeds', 'config'];
@@ -129,13 +118,11 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-6">
-        {effectiveTab === 'feed' && <ArticleFeed onVerifyClick={handleVerifyClick} />}
+        {effectiveTab === 'feed' && <ArticleFeed />}
         {effectiveTab === 'jobs' && isAuthenticated && <JobMonitor />}
         {effectiveTab === 'feeds' && isAuthenticated && <FeedManager />}
         {effectiveTab === 'config' && isAuthenticated && <ConfigPanel />}
       </main>
-
-      <VerificationPanel article={verifyingArticle} onClose={handleCloseVerification} />
 
       <LoginDialog open={showLogin} onOpenChange={setShowLogin} />
     </div>
