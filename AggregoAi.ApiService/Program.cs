@@ -1,3 +1,5 @@
+using AggregoAi.ApiService.Repositories;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add service defaults & Aspire client integrations.
@@ -5,6 +7,12 @@ builder.AddServiceDefaults();
 
 // Add MongoDB client with Aspire integration
 builder.AddMongoDBClient("aggregoai");
+
+// Register repositories
+builder.Services.AddSingleton<IArticleRepository, MongoArticleRepository>();
+builder.Services.AddSingleton<IFeedConfigRepository, MongoFeedConfigRepository>();
+builder.Services.AddSingleton<ISystemConfigRepository, MongoSystemConfigRepository>();
+builder.Services.AddSingleton<IJobExecutionLogRepository, MongoJobExecutionLogRepository>();
 
 // Add services to the container.
 builder.Services.AddProblemDetails();
