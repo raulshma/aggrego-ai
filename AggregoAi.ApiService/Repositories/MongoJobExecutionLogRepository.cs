@@ -51,4 +51,21 @@ public class MongoJobExecutionLogRepository : IJobExecutionLogRepository
             .SortByDescending(l => l.StartTime)
             .FirstOrDefaultAsync();
     }
+
+    public async Task<IEnumerable<JobExecutionLog>> GetByDateRangeAsync(DateTime startDate, DateTime endDate, string? jobGroup = null)
+    {
+        var filterBuilder = Builders<JobExecutionLog>.Filter;
+        var filter = filterBuilder.Gte(l => l.StartTime, startDate) &
+                     filterBuilder.Lt(l => l.StartTime, endDate);
+
+        if (!string.IsNullOrEmpty(jobGroup))
+        {
+            filter &= filterBuilder.Eq(l => l.JobGroup, jobGroup);
+        }
+
+        return await _collection
+            .Find(filter)
+            .SortByDescending(l => l.StartTime)
+            .ToListAsync();
+    }
 }

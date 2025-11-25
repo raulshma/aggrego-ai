@@ -13,6 +13,9 @@
   <ItemGroup>
     <PackageReference Include="Aspire.MongoDB.Driver" Version="13.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageReference Include="Quartz" Version="3.13.1" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.13.1" />
+    <PackageReference Include="Quartz.Serialization.Json" Version="3.13.1" />
   </ItemGroup>
 
 </Project>

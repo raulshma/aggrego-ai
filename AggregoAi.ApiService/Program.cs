@@ -1,4 +1,5 @@
 using AggregoAi.ApiService.Repositories;
+using AggregoAi.ApiService.Scheduling;
 using AggregoAi.ApiService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,7 @@ builder.Services.AddSingleton<IArticleRepository, MongoArticleRepository>();
 builder.Services.AddSingleton<IFeedConfigRepository, MongoFeedConfigRepository>();
 builder.Services.AddSingleton<ISystemConfigRepository, MongoSystemConfigRepository>();
 builder.Services.AddSingleton<IJobExecutionLogRepository, MongoJobExecutionLogRepository>();
+builder.Services.AddSingleton<IAnalyticsRepository, MongoAnalyticsRepository>();
 
 // Register RSS services
 builder.Services.AddHttpClient<IRssFetcher, RssFetcher>(client =>
@@ -21,6 +23,9 @@ builder.Services.AddHttpClient<IRssFetcher, RssFetcher>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddSingleton<IRssParser, RssParser>();
+
+// Add Quartz.NET scheduler with MongoDB persistence
+builder.Services.AddQuartzScheduler(builder.Configuration);
 
 // Add services to the container.
 builder.Services.AddProblemDetails();
