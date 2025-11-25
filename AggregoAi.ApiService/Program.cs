@@ -1,4 +1,5 @@
 using AggregoAi.ApiService.Repositories;
+using AggregoAi.ApiService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +14,13 @@ builder.Services.AddSingleton<IArticleRepository, MongoArticleRepository>();
 builder.Services.AddSingleton<IFeedConfigRepository, MongoFeedConfigRepository>();
 builder.Services.AddSingleton<ISystemConfigRepository, MongoSystemConfigRepository>();
 builder.Services.AddSingleton<IJobExecutionLogRepository, MongoJobExecutionLogRepository>();
+
+// Register RSS services
+builder.Services.AddHttpClient<IRssFetcher, RssFetcher>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddSingleton<IRssParser, RssParser>();
 
 // Add services to the container.
 builder.Services.AddProblemDetails();
