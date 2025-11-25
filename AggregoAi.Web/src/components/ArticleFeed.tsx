@@ -151,7 +151,7 @@ export function ArticleFeed({ onVerifyClick }: ArticleFeedProps) {
               <Shield className="w-8 h-8 text-muted-foreground" />
             </div>
             <h3 className="font-semibold mb-2">No articles yet</h3>
-            <p className="text-muted-foreground text-sm">Add some RSS feeds to start aggregating news.</p>
+            <p className="text-muted-foreground text-sm">Check back soon for the latest news.</p>
           </CardContent>
         </Card>
       ) : (

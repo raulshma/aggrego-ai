@@ -86,14 +86,12 @@ function AppContent() {
 
               {/* Auth Button */}
               {isAuthenticated ? (
-                <Button variant="ghost" size="sm" onClick={logout} className="gap-2">
+                <Button variant="ghost" size="icon" onClick={logout} title="Logout">
                   <LogOut className="w-4 h-4" />
-                  <span className="hidden sm:inline">Logout</span>
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" onClick={() => setShowLogin(true)} className="gap-2">
+                <Button variant="ghost" size="icon" onClick={() => setShowLogin(true)} title="Login">
                   <Lock className="w-4 h-4" />
-                  <span className="hidden sm:inline">Admin</span>
                 </Button>
               )}
             </div>
