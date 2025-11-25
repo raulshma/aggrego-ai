@@ -2,7 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { jobApi } from '../services/api';
 import type { JobInfo, JobExecutionLog } from '../types/api';
 import { JobExecutionStatus } from '../types/api';
-import './JobMonitor.css';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  RefreshCw, Play, Pause, Zap, History, Clock, CheckCircle, 
+  XCircle, AlertCircle, Loader2, Pencil, X, Check 
+} from 'lucide-react';
 
 export function JobMonitor() {
   const [jobs, setJobs] = useState<JobInfo[]>([]);
@@ -30,7 +39,7 @@ export function JobMonitor() {
 
   useEffect(() => {
     loadJobs();
-    const interval = setInterval(loadJobs, 30000); // Refresh every 30s
+    const interval = setInterval(loadJobs, 30000);
     return () => clearInterval(interval);
   }, [loadJobs]);
 
@@ -59,7 +68,6 @@ export function JobMonitor() {
       setActionLoading(null);
     }
   };
-
 
   const handleTrigger = async (job: JobInfo) => {
     const key = `${job.jobKey}.${job.jobGroup}`;
@@ -110,23 +118,28 @@ export function JobMonitor() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleString();
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const getStatusBadge = (status: JobExecutionStatus | null) => {
-    if (status === null) return <span className="job-status none">-</span>;
+    if (status === null) return <Badge variant="outline">-</Badge>;
     switch (status) {
       case JobExecutionStatus.Success:
-        return <span className="job-status success">✓ Success</span>;
+        return <Badge variant="success" className="gap-1"><CheckCircle className="w-3 h-3" />Success</Badge>;
       case JobExecutionStatus.Failed:
-        return <span className="job-status failed">✗ Failed</span>;
+        return <Badge variant="destructive" className="gap-1"><XCircle className="w-3 h-3" />Failed</Badge>;
       case JobExecutionStatus.Cancelled:
-        return <span className="job-status cancelled">○ Cancelled</span>;
+        return <Badge variant="secondary" className="gap-1"><AlertCircle className="w-3 h-3" />Cancelled</Badge>;
     }
   };
 
   const formatDuration = (duration: string) => {
-    // Duration comes as TimeSpan string like "00:00:01.234"
     const parts = duration.split(':');
     if (parts.length === 3) {
       const hours = parseInt(parts[0]);
@@ -140,149 +153,172 @@ export function JobMonitor() {
   };
 
   if (loading && jobs.length === 0) {
-    return <div className="job-monitor"><div className="loading">Loading jobs...</div></div>;
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
-    <div className="job-monitor">
-      <div className="monitor-header">
-        <h2>Job Monitor</h2>
-        <button onClick={loadJobs} className="refresh-btn" disabled={loading}>
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Job Monitor</h2>
+          <p className="text-muted-foreground text-sm">Monitor and control scheduled tasks</p>
+        </div>
+        <Button onClick={loadJobs} variant="outline" size="sm" disabled={loading}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
-
-      <div className="jobs-table-container">
-        <table className="jobs-table">
-          <thead>
-            <tr>
-              <th>Job</th>
-              <th>Type</th>
-              <th>Schedule</th>
-              <th>Last Run</th>
-              <th>Next Run</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => {
-              const key = `${job.jobKey}.${job.jobGroup}`;
-              const isEditing = editingCron === key;
-              const isLoading = actionLoading === key;
-
-              return (
-                <tr key={key} className={job.isPaused ? 'paused' : ''}>
-                  <td>
-                    <div className="job-name">{job.jobKey}</div>
-                    <div className="job-group">{job.jobGroup}</div>
-                  </td>
-                  <td>{job.jobType}</td>
-                  <td>
-                    {isEditing ? (
-                      <div className="cron-editor">
-                        <input
-                          type="text"
-                          value={cronValue}
-                          onChange={(e) => setCronValue(e.target.value)}
-                          placeholder="CRON expression"
-                        />
-                        <button onClick={() => handleReschedule(job)} disabled={isLoading}>
-                          Save
-                        </button>
-                        <button onClick={() => setEditingCron(null)}>Cancel</button>
-                      </div>
-                    ) : (
-                      <div className="cron-display" onClick={() => startEditCron(job)}>
-                        <code>{job.cronExpression}</code>
-                        <span className="edit-icon">✎</span>
-                      </div>
-                    )}
-                  </td>
-                  <td>{formatDate(job.lastExecutionTime)}</td>
-                  <td>{formatDate(job.nextExecutionTime)}</td>
-                  <td>
-                    {job.isPaused ? (
-                      <span className="job-status paused">⏸ Paused</span>
-                    ) : (
-                      getStatusBadge(job.lastStatus)
-                    )}
-                  </td>
-                  <td>
-                    <div className="action-buttons">
-                      {job.isPaused ? (
-                        <button onClick={() => handleResume(job)} disabled={isLoading} title="Resume">
-                          ▶
-                        </button>
-                      ) : (
-                        <button onClick={() => handlePause(job)} disabled={isLoading} title="Pause">
-                          ⏸
-                        </button>
-                      )}
-                      <button onClick={() => handleTrigger(job)} disabled={isLoading} title="Trigger Now">
-                        ⚡
-                      </button>
-                      <button onClick={() => handleViewHistory(job)} title="View History">
-                        📋
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* History Modal */}
-      {selectedJob && (
-        <div className="modal-overlay" onClick={() => setSelectedJob(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Execution History: {selectedJob.jobKey}</h3>
-              <button onClick={() => setSelectedJob(null)}>×</button>
-            </div>
-            <div className="modal-content">
-              {historyLoading ? (
-                <div className="loading">Loading history...</div>
-              ) : history.length === 0 ? (
-                <p>No execution history found.</p>
-              ) : (
-                <table className="history-table">
-                  <thead>
-                    <tr>
-                      <th>Start Time</th>
-                      <th>Duration</th>
-                      <th>Status</th>
-                      <th>Items</th>
-                      <th>Error</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((log) => (
-                      <tr key={log.id}>
-                        <td>{formatDate(log.startTime)}</td>
-                        <td>{formatDuration(log.duration)}</td>
-                        <td>{getStatusBadge(log.status)}</td>
-                        <td>{log.itemsProcessed}</td>
-                        <td className="error-cell">
-                          {log.errorMessage && (
-                            <span title={log.stackTrace || log.errorMessage}>
-                              {log.errorMessage.substring(0, 50)}...
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+      {error && (
+        <div className="flex items-center gap-2 p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <span className="text-sm">{error}</span>
         </div>
       )}
+
+      {/* Jobs Grid */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {jobs.map((job) => {
+          const key = `${job.jobKey}.${job.jobGroup}`;
+          const isEditing = editingCron === key;
+          const isLoading = actionLoading === key;
+
+          return (
+            <Card key={key} className={job.isPaused ? 'opacity-60' : ''}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="font-semibold">{job.jobKey}</h3>
+                    <p className="text-xs text-muted-foreground">{job.jobGroup} • {job.jobType}</p>
+                  </div>
+                  {job.isPaused ? (
+                    <Badge variant="warning" className="gap-1">
+                      <Pause className="w-3 h-3" />
+                      Paused
+                    </Badge>
+                  ) : (
+                    getStatusBadge(job.lastStatus)
+                  )}
+                </div>
+
+                {/* Schedule */}
+                <div className="mb-4">
+                  {isEditing ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={cronValue}
+                        onChange={(e) => setCronValue(e.target.value)}
+                        placeholder="CRON expression"
+                        className="flex-1 h-8 text-sm"
+                      />
+                      <Button size="sm" variant="ghost" onClick={() => handleReschedule(job)} disabled={isLoading}>
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingCron(null)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => startEditCron(job)}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <Clock className="w-4 h-4" />
+                      <code className="text-xs bg-muted px-2 py-0.5 rounded">{job.cronExpression}</code>
+                      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Timing Info */}
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mb-4">
+                  <div>
+                    <span className="block text-foreground/70">Last Run</span>
+                    {formatDate(job.lastExecutionTime)}
+                  </div>
+                  <div>
+                    <span className="block text-foreground/70">Next Run</span>
+                    {formatDate(job.nextExecutionTime)}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  {job.isPaused ? (
+                    <Button onClick={() => handleResume(job)} disabled={isLoading} variant="outline" size="sm" className="flex-1">
+                      <Play className="w-4 h-4 mr-1" />
+                      Resume
+                    </Button>
+                  ) : (
+                    <Button onClick={() => handlePause(job)} disabled={isLoading} variant="outline" size="sm" className="flex-1">
+                      <Pause className="w-4 h-4 mr-1" />
+                      Pause
+                    </Button>
+                  )}
+                  <Button onClick={() => handleTrigger(job)} disabled={isLoading} variant="outline" size="sm">
+                    <Zap className="w-4 h-4" />
+                  </Button>
+                  <Button onClick={() => handleViewHistory(job)} variant="outline" size="sm">
+                    <History className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* History Dialog */}
+      <Dialog open={!!selectedJob} onOpenChange={() => setSelectedJob(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Execution History: {selectedJob?.jobKey}</DialogTitle>
+          </DialogHeader>
+          
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No execution history found.</p>
+          ) : (
+            <ScrollArea className="h-[400px] pr-4">
+              <div className="space-y-3">
+                {history.map((log) => (
+                  <Card key={log.id} className="bg-muted/30">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm">{formatDate(log.startTime)}</span>
+                        {getStatusBadge(log.status)}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Duration:</span>{' '}
+                          <span className="font-mono">{formatDuration(log.duration)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Items:</span>{' '}
+                          <span>{log.itemsProcessed}</span>
+                        </div>
+                      </div>
+                      {log.errorMessage && (
+                        <div className="mt-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
+                          {log.errorMessage}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

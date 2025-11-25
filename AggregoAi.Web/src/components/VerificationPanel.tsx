@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Article, AgentStepEvent } from '../types/api';
-import './VerificationPanel.css';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { X, Brain, Wrench, Eye, CheckCircle, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface VerificationPanelProps {
   article: Article | null;
@@ -54,7 +57,6 @@ export function VerificationPanel({ article, onClose }: VerificationPanelProps) 
 
       const decoder = new TextDecoder();
       let buffer = '';
-
 
       while (true) {
         const { done, value } = await reader.read();
@@ -117,29 +119,29 @@ export function VerificationPanel({ article, onClose }: VerificationPanelProps) 
 
   const getStepIcon = (type: string) => {
     switch (type) {
-      case 'Thought': return '💭';
-      case 'Action': return '🔧';
-      case 'Observation': return '👁️';
-      case 'FinalAnswer': return '✅';
-      default: return '•';
+      case 'Thought': return <Brain className="w-4 h-4" />;
+      case 'Action': return <Wrench className="w-4 h-4" />;
+      case 'Observation': return <Eye className="w-4 h-4" />;
+      case 'FinalAnswer': return <CheckCircle className="w-4 h-4" />;
+      default: return <div className="w-4 h-4 rounded-full bg-current" />;
     }
   };
 
-  const getStepClass = (type: string) => {
-    return `step step-${type.toLowerCase()}`;
+  const getStepColor = (type: string) => {
+    switch (type) {
+      case 'Thought': return 'text-blue-400 bg-blue-400/10 border-blue-400/30';
+      case 'Action': return 'text-amber-400 bg-amber-400/10 border-amber-400/30';
+      case 'Observation': return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30';
+      case 'FinalAnswer': return 'text-primary bg-primary/10 border-primary/30';
+      default: return 'text-muted-foreground bg-muted border-border';
+    }
   };
 
-  // Simple markdown rendering for basic formatting
   const renderMarkdown = (content: string) => {
-    // Handle bold
-    let html = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Handle italic
+    let html = content.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    // Handle inline code
-    html = html.replace(/`(.*?)`/g, '<code>$1</code>');
-    // Handle links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-    // Handle line breaks
+    html = html.replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">$1</code>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">$1</a>');
     html = html.replace(/\n/g, '<br/>');
     
     return <span dangerouslySetInnerHTML={{ __html: html }} />;
@@ -148,64 +150,107 @@ export function VerificationPanel({ article, onClose }: VerificationPanelProps) 
   if (!article) return null;
 
   return (
-    <div className="verification-panel-overlay" onClick={handleClose}>
-      <div className="verification-panel" onClick={e => e.stopPropagation()}>
-        <div className="panel-header">
-          <h3>AI Verification</h3>
-          <button className="close-btn" onClick={handleClose}>×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={handleClose}
+      />
+      
+      {/* Panel */}
+      <div className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl border border-border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+              <Brain className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h3 className="font-semibold">AI Verification</h3>
+              <p className="text-xs text-muted-foreground">Analyzing article credibility</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" onClick={handleClose}>
+            <X className="w-5 h-5" />
+          </Button>
         </div>
 
-        <div className="article-info">
-          <h4>{article.title}</h4>
-          <p className="source">{article.sourceFeedName}</p>
+        {/* Article Info */}
+        <div className="p-4 border-b border-border/50 bg-muted/30">
+          <h4 className="font-medium line-clamp-2 mb-1">{article.title}</h4>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{article.sourceFeedName}</span>
+            <a 
+              href={article.link} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-primary hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View Article
+            </a>
+          </div>
         </div>
 
-        <div className="steps-container">
-          {steps.length === 0 && isStreaming && (
-            <div className="loading">Starting verification...</div>
-          )}
-
-          {steps.map((step, index) => (
-            <div key={index} className={getStepClass(step.type)}>
-              <div className="step-header">
-                <span className="step-icon">{getStepIcon(step.type)}</span>
-                <span className="step-type">{step.type}</span>
-                <span className="step-time">
-                  {step.timestamp.toLocaleTimeString()}
-                </span>
+        {/* Steps */}
+        <ScrollArea className="flex-1 p-4">
+          <div className="space-y-4">
+            {steps.length === 0 && isStreaming && (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Starting verification...</span>
+                </div>
               </div>
-              <div className="step-content">
-                {renderMarkdown(step.content)}
+            )}
+
+            {steps.map((step, index) => (
+              <div 
+                key={index} 
+                className={`rounded-xl border p-4 ${getStepColor(step.type)}`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  {getStepIcon(step.type)}
+                  <Badge variant="outline" className="text-xs border-current/30">
+                    {step.type}
+                  </Badge>
+                  <span className="text-xs opacity-60 ml-auto">
+                    {step.timestamp.toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="text-sm leading-relaxed">
+                  {renderMarkdown(step.content)}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {error && (
-            <div className="error-step">
-              <span className="step-icon">❌</span>
-              <span>{error}</span>
-            </div>
-          )}
+            {error && (
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <span className="text-sm">{error}</span>
+              </div>
+            )}
 
-          {isComplete && (
-            <div className="complete-message">
-              ✓ Verification complete
-            </div>
-          )}
+            {isComplete && (
+              <div className="flex items-center justify-center gap-2 py-4 text-success">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-medium">Verification complete</span>
+              </div>
+            )}
 
-          <div ref={stepsEndRef} />
-        </div>
+            <div ref={stepsEndRef} />
+          </div>
+        </ScrollArea>
 
-        <div className="panel-footer">
-          {isStreaming ? (
-            <button onClick={handleClose} className="cancel-btn">
-              Cancel
-            </button>
-          ) : (
-            <button onClick={handleClose} className="close-btn-footer">
-              Close
-            </button>
-          )}
+        {/* Footer */}
+        <div className="p-4 border-t border-border/50 bg-muted/30">
+          <Button 
+            onClick={handleClose} 
+            variant={isStreaming ? 'destructive' : 'outline'}
+            className="w-full"
+          >
+            {isStreaming ? 'Cancel Verification' : 'Close'}
+          </Button>
         </div>
       </div>
     </div>
