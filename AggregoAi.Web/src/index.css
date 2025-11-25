@@ -198,3 +198,46 @@ body {
 .verdict-mostly-false { background: oklch(0.65 0.18 50 / 0.2); color: oklch(0.65 0.18 50); }
 .verdict-false { background: oklch(0.6 0.2 25 / 0.2); color: oklch(0.6 0.2 25); }
 .verdict-unverifiable { background: oklch(0.5 0.02 260 / 0.2); color: oklch(0.65 0.02 260); }
+
+/* Feed page styles */
+.feed-container {
+  max-width: 100%;
+}
+
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Card hover glow effect */
+.hover\:shadow-glow:hover {
+  box-shadow: var(--shadow-glow);
+}
+
+/* Smooth image zoom on hover */
+.group:hover .group-hover\:scale-105 {
+  transform: scale(1.05);
+}
+
+/* Section divider */
+.feed-section + .feed-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: 2rem;
+}
+
+/* Hero article text shadow for readability */
+.hero-text-shadow {
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 640px) {
+  .feed-container section h2 {
+    font-size: 1.125rem;
+  }
+}

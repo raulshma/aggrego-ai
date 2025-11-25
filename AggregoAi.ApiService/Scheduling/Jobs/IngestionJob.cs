@@ -94,8 +94,16 @@ public class IngestionJob : IJob
                     ImageUrl = parsedArticle.ImageUrl
                 };
 
-                await _articleRepository.CreateAsync(article);
-                itemsProcessed++;
+                try
+                {
+                    await _articleRepository.CreateAsync(article);
+                    itemsProcessed++;
+                }
+                catch (MongoDB.Driver.MongoWriteException ex) when (ex.WriteError?.Category == MongoDB.Driver.ServerErrorCategory.DuplicateKey)
+                {
+                    // Article was inserted by another process between our check and insert - skip it
+                    _logger.LogDebug("Duplicate article detected during insert (race condition): {Link}", parsedArticle.Link);
+                }
             }
 
             // Update last fetched timestamp
