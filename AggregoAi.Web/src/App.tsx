@@ -15,7 +15,7 @@ import { Newspaper, Cog, Rss, Settings2, Sparkles, Lock, LogOut } from 'lucide-r
 type Tab = 'feed' | 'jobs' | 'feeds' | 'config';
 
 function AppContent() {
-  const { isAuthenticated, logout, isLoading } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('feed');
   const [verifyingArticle, setVerifyingArticle] = useState<Article | null>(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -28,29 +28,15 @@ function AppContent() {
     setVerifyingArticle(null);
   };
 
-  const handleTabChange = (tab: Tab) => {
-    // If trying to access admin tabs without auth, show login
-    if (!isAuthenticated && (tab === 'jobs' || tab === 'feeds' || tab === 'config')) {
-      setShowLogin(true);
-      return;
-    }
-    setActiveTab(tab);
-  };
-
-  // Admin tabs require authentication
+  // Compute effective tab - if on admin tab but not authenticated, show feed
   const adminTabs: Tab[] = ['jobs', 'feeds', 'config'];
-  const isAdminTab = adminTabs.includes(activeTab);
-
-  // If on admin tab but not authenticated, redirect to feed
-  if (isAdminTab && !isAuthenticated && !isLoading) {
-    setActiveTab('feed');
-  }
+  const effectiveTab = adminTabs.includes(activeTab) && !isAuthenticated ? 'feed' : activeTab;
 
   return (
     <div className="min-h-screen relative">
       {/* Aurora background effect */}
       <div className="aurora-bg" />
-      
+
       {/* Header */}
       <header className="sticky top-0 z-40 glass-strong border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -71,29 +57,30 @@ function AppContent() {
               </div>
             </div>
 
-            {/* Navigation Tabs */}
+            {/* Navigation Tabs + Auth */}
             <div className="flex items-center gap-4">
-              <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as Tab)}>
+              <Tabs value={effectiveTab} onValueChange={(v) => setActiveTab(v as Tab)}>
                 <TabsList className="hidden sm:flex">
                   <TabsTrigger value="feed" className="gap-2">
                     <Newspaper className="w-4 h-4" />
                     <span className="hidden md:inline">Feed</span>
                   </TabsTrigger>
-                  <TabsTrigger value="jobs" className="gap-2">
-                    <Cog className="w-4 h-4" />
-                    <span className="hidden md:inline">Jobs</span>
-                    {!isAuthenticated && <Lock className="w-3 h-3 opacity-50" />}
-                  </TabsTrigger>
-                  <TabsTrigger value="feeds" className="gap-2">
-                    <Rss className="w-4 h-4" />
-                    <span className="hidden md:inline">Sources</span>
-                    {!isAuthenticated && <Lock className="w-3 h-3 opacity-50" />}
-                  </TabsTrigger>
-                  <TabsTrigger value="config" className="gap-2">
-                    <Settings2 className="w-4 h-4" />
-                    <span className="hidden md:inline">Config</span>
-                    {!isAuthenticated && <Lock className="w-3 h-3 opacity-50" />}
-                  </TabsTrigger>
+                  {isAuthenticated && (
+                    <>
+                      <TabsTrigger value="jobs" className="gap-2">
+                        <Cog className="w-4 h-4" />
+                        <span className="hidden md:inline">Jobs</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="feeds" className="gap-2">
+                        <Rss className="w-4 h-4" />
+                        <span className="hidden md:inline">Sources</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="config" className="gap-2">
+                        <Settings2 className="w-4 h-4" />
+                        <span className="hidden md:inline">Config</span>
+                      </TabsTrigger>
+                    </>
+                  )}
                 </TabsList>
               </Tabs>
 
@@ -116,49 +103,41 @@ function AppContent() {
 
       {/* Mobile Navigation */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 glass-strong border-t border-border/50 px-2 py-2">
-        <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as Tab)}>
-          <TabsList className="w-full grid grid-cols-4">
+        <Tabs value={effectiveTab} onValueChange={(v) => setActiveTab(v as Tab)}>
+          <TabsList className={`w-full grid ${isAuthenticated ? 'grid-cols-4' : 'grid-cols-1'}`}>
             <TabsTrigger value="feed" className="flex-col gap-1 py-2">
               <Newspaper className="w-5 h-5" />
               <span className="text-[10px]">Feed</span>
             </TabsTrigger>
-            <TabsTrigger value="jobs" className="flex-col gap-1 py-2">
-              <div className="relative">
-                <Cog className="w-5 h-5" />
-                {!isAuthenticated && <Lock className="w-2.5 h-2.5 absolute -top-1 -right-1 opacity-50" />}
-              </div>
-              <span className="text-[10px]">Jobs</span>
-            </TabsTrigger>
-            <TabsTrigger value="feeds" className="flex-col gap-1 py-2">
-              <div className="relative">
-                <Rss className="w-5 h-5" />
-                {!isAuthenticated && <Lock className="w-2.5 h-2.5 absolute -top-1 -right-1 opacity-50" />}
-              </div>
-              <span className="text-[10px]">Sources</span>
-            </TabsTrigger>
-            <TabsTrigger value="config" className="flex-col gap-1 py-2">
-              <div className="relative">
-                <Settings2 className="w-5 h-5" />
-                {!isAuthenticated && <Lock className="w-2.5 h-2.5 absolute -top-1 -right-1 opacity-50" />}
-              </div>
-              <span className="text-[10px]">Config</span>
-            </TabsTrigger>
+            {isAuthenticated && (
+              <>
+                <TabsTrigger value="jobs" className="flex-col gap-1 py-2">
+                  <Cog className="w-5 h-5" />
+                  <span className="text-[10px]">Jobs</span>
+                </TabsTrigger>
+                <TabsTrigger value="feeds" className="flex-col gap-1 py-2">
+                  <Rss className="w-5 h-5" />
+                  <span className="text-[10px]">Sources</span>
+                </TabsTrigger>
+                <TabsTrigger value="config" className="flex-col gap-1 py-2">
+                  <Settings2 className="w-5 h-5" />
+                  <span className="text-[10px]">Config</span>
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
         </Tabs>
       </div>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-6">
-        {activeTab === 'feed' && <ArticleFeed onVerifyClick={handleVerifyClick} />}
-        {activeTab === 'jobs' && isAuthenticated && <JobMonitor />}
-        {activeTab === 'feeds' && isAuthenticated && <FeedManager />}
-        {activeTab === 'config' && isAuthenticated && <ConfigPanel />}
+        {effectiveTab === 'feed' && <ArticleFeed onVerifyClick={handleVerifyClick} />}
+        {effectiveTab === 'jobs' && isAuthenticated && <JobMonitor />}
+        {effectiveTab === 'feeds' && isAuthenticated && <FeedManager />}
+        {effectiveTab === 'config' && isAuthenticated && <ConfigPanel />}
       </main>
 
-      <VerificationPanel
-        article={verifyingArticle}
-        onClose={handleCloseVerification}
-      />
+      <VerificationPanel article={verifyingArticle} onClose={handleCloseVerification} />
 
       <LoginDialog open={showLogin} onOpenChange={setShowLogin} />
     </div>
