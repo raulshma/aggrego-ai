@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { VirtuosoGrid } from 'react-virtuoso';
 import { articleApi } from '../services/api';
 import type { Article, ConfidenceLevel } from '../types/api';
 import { VerificationStatus, ConfidenceLevel as ConfidenceLevelValues } from '../types/api';
@@ -10,12 +11,31 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { RefreshCw, ExternalLink, Shield, ShieldCheck, ShieldAlert, Clock, Loader2, Trash2, EyeOff, Eye, CheckSquare, Square, BookOpen } from 'lucide-react';
 import { ArticleReader } from './ArticleReader';
 
+const gridComponents = {
+  List: ({ style, children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+    <div
+      {...props}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+        gap: '1rem',
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  ),
+  Item: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+    <div {...props}>{children}</div>
+  ),
+};
+
 export function ArticleFeed() {
   const { isAuthenticated } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState(false);
@@ -23,43 +43,51 @@ export function ArticleFeed() {
   const [readerIndex, setReaderIndex] = useState<number>(-1);
   const limit = 20;
 
-  const loadArticles = useCallback(async (newOffset: number, append = false) => {
-    try {
+  const loadArticles = useCallback(async (reset = false) => {
+    if (reset) {
       setLoading(true);
+      setArticles([]);
+    } else {
+      setLoadingMore(true);
+    }
+
+    try {
       setError(null);
-      const response = await articleApi.getArticles(limit, newOffset);
+      const currentOffset = reset ? 0 : articles.length;
+      const response = await articleApi.getArticles(limit, currentOffset);
       
-      if (append) {
-        setArticles(prev => [...prev, ...response.articles]);
-      } else {
+      if (reset) {
         setArticles(response.articles);
+      } else {
+        setArticles(prev => [...prev, ...response.articles]);
       }
       
       setHasMore(response.articles.length === limit);
-      setOffset(newOffset);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load articles');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, []);
+  }, [articles.length]);
 
   useEffect(() => {
-    loadArticles(0);
-  }, [loadArticles]);
+    loadArticles(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const loadMore = () => {
-    if (!loading && hasMore) {
-      loadArticles(offset + limit, true);
+  const loadMore = useCallback(() => {
+    if (!loading && !loadingMore && hasMore) {
+      loadArticles(false);
     }
-  };
+  }, [loading, loadingMore, hasMore, loadArticles]);
 
   const refresh = () => {
     setSelectedIds(new Set());
-    loadArticles(0);
+    loadArticles(true);
   };
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -69,7 +97,7 @@ export function ArticleFeed() {
       }
       return next;
     });
-  };
+  }, []);
 
   const selectAll = () => {
     if (selectedIds.size === articles.length) {
@@ -87,7 +115,7 @@ export function ArticleFeed() {
     try {
       await articleApi.bulkDeleteArticles(Array.from(selectedIds));
       setSelectedIds(new Set());
-      await loadArticles(0);
+      await loadArticles(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete articles');
     } finally {
@@ -102,7 +130,7 @@ export function ArticleFeed() {
     try {
       await articleApi.bulkSetArticlesHidden(Array.from(selectedIds), hide);
       setSelectedIds(new Set());
-      await loadArticles(0);
+      await loadArticles(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to update articles');
     } finally {
@@ -110,36 +138,36 @@ export function ArticleFeed() {
     }
   };
 
-  const handleSingleDelete = async (id: string) => {
+  const handleSingleDelete = useCallback(async (id: string) => {
     if (!confirm('Are you sure you want to delete this article?')) return;
 
     setActionLoading(true);
     try {
       await articleApi.deleteArticle(id);
-      await loadArticles(0);
+      await loadArticles(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete article');
     } finally {
       setActionLoading(false);
     }
-  };
+  }, [loadArticles]);
 
-  const handleToggleHidden = async (article: Article) => {
+  const handleToggleHidden = useCallback(async (article: Article) => {
     setActionLoading(true);
     try {
       await articleApi.setArticleHidden(article.id, !article.isHidden);
-      await loadArticles(0);
+      await loadArticles(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to update article');
     } finally {
       setActionLoading(false);
     }
-  };
+  }, [loadArticles]);
 
-  const openReader = (article: Article, index: number) => {
+  const openReader = useCallback((article: Article, index: number) => {
     setReaderArticle(article);
     setReaderIndex(index);
-  };
+  }, []);
 
   const closeReader = () => {
     setReaderArticle(null);
@@ -163,7 +191,7 @@ export function ArticleFeed() {
     }
   };
 
-  const getStatusBadge = (article: Article) => {
+  const getStatusBadge = useCallback((article: Article) => {
     switch (article.verificationStatus) {
       case VerificationStatus.Verified: {
         const confidence = article.verdict?.confidence;
@@ -191,7 +219,7 @@ export function ArticleFeed() {
           </Badge>
         );
     }
-  };
+  }, []);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -209,6 +237,137 @@ export function ArticleFeed() {
       day: 'numeric',
     });
   };
+
+  const renderArticleCard = useCallback((article: Article, index: number) => (
+    <Card className={`group flex flex-col overflow-hidden h-full ${article.isHidden ? 'opacity-50' : ''} ${selectedIds.has(article.id) ? 'ring-2 ring-primary' : ''}`}>
+      {article.imageUrl && (
+        <div className="relative h-40 overflow-hidden bg-muted">
+          <img
+            src={article.imageUrl}
+            alt=""
+            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+          {isAuthenticated && (
+            <button
+              onClick={() => toggleSelect(article.id)}
+              className="absolute top-2 left-2 w-6 h-6 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background transition-colors"
+            >
+              {selectedIds.has(article.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+            </button>
+          )}
+        </div>
+      )}
+      <CardContent className="p-5 flex flex-col flex-1">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {isAuthenticated && !article.imageUrl && (
+              <button onClick={() => toggleSelect(article.id)} className="mr-1">
+                {selectedIds.has(article.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+              </button>
+            )}
+            <span className="font-medium text-foreground/80">{article.sourceFeedName || 'Unknown'}</span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {formatDate(article.publicationDate)}
+            </span>
+            {article.isHidden && <Badge variant="secondary" className="text-xs">Hidden</Badge>}
+          </div>
+          {getStatusBadge(article)}
+        </div>
+
+        <h3 className="font-semibold text-base leading-snug mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+          <a href={article.link} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            {article.title}
+          </a>
+        </h3>
+
+        {article.description && (
+          <p className="text-sm text-muted-foreground line-clamp-3 mb-3 flex-1">
+            {article.description}
+          </p>
+        )}
+
+        {article.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {article.tags.slice(0, 3).map((tag, i) => (
+              <Badge key={i} variant="secondary" className="text-xs px-2 py-0">
+                {tag}
+              </Badge>
+            ))}
+            {article.tags.length > 3 && (
+              <Badge variant="secondary" className="text-xs px-2 py-0">
+                +{article.tags.length - 3}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 mt-auto pt-3 border-t border-border/50">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => openReader(article, index)}
+                variant={article.analysisResult ? "outline" : "glow"}
+                size="sm"
+                className="flex-1"
+              >
+                {article.analysisResult ? (
+                  <>
+                    <Eye className="w-4 h-4" />
+                    Show Analysis
+                  </>
+                ) : (
+                  <>
+                    <BookOpen className="w-4 h-4" />
+                    Analyze
+                  </>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {article.analysisResult 
+                ? "View saved analysis results" 
+                : "Open full analysis with fact-check and bias detection"}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" asChild>
+                <a href={article.link} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Open article in new tab</TooltipContent>
+          </Tooltip>
+          {isAuthenticated && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={() => handleToggleHidden(article)} variant="outline" size="sm" disabled={actionLoading}>
+                    {article.isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{article.isHidden ? 'Unhide article' : 'Hide article'}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={() => handleSingleDelete(article.id)} variant="outline" size="sm" disabled={actionLoading} className="text-destructive hover:bg-destructive/10">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete article</TooltipContent>
+              </Tooltip>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  ), [selectedIds, isAuthenticated, actionLoading, getStatusBadge, handleToggleHidden, handleSingleDelete, openReader, toggleSelect]);
 
   if (error && articles.length === 0) {
     return (
@@ -233,7 +392,7 @@ export function ArticleFeed() {
     <TooltipProvider>
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">News Feed</h2>
           <p className="text-muted-foreground text-sm">AI-verified news from your sources</p>
@@ -280,8 +439,8 @@ export function ArticleFeed() {
           )}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={refresh} variant="outline" size="sm" disabled={loading && articles.length === 0}>
-                <RefreshCw className={`w-4 h-4 mr-2 ${loading && articles.length === 0 ? 'animate-spin' : ''}`} />
+              <Button onClick={refresh} variant="outline" size="sm" disabled={loading}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             </TooltipTrigger>
@@ -290,8 +449,15 @@ export function ArticleFeed() {
         </div>
       </div>
 
-      {/* Articles Grid */}
-      {articles.length === 0 && !loading ? (
+      {/* Articles Grid with Virtualization */}
+      {loading && articles.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+            <p className="text-muted-foreground">Loading articles...</p>
+          </CardContent>
+        </Card>
+      ) : articles.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
@@ -302,164 +468,21 @@ export function ArticleFeed() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {articles.map((article) => (
-            <Card key={article.id} className={`group flex flex-col overflow-hidden ${article.isHidden ? 'opacity-50' : ''} ${selectedIds.has(article.id) ? 'ring-2 ring-primary' : ''}`}>
-              {/* Article Image */}
-              {article.imageUrl && (
-                <div className="relative h-40 overflow-hidden bg-muted">
-                  <img
-                    src={article.imageUrl}
-                    alt=""
-                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                  {isAuthenticated && (
-                    <button
-                      onClick={() => toggleSelect(article.id)}
-                      className="absolute top-2 left-2 w-6 h-6 rounded bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background transition-colors"
-                    >
-                      {selectedIds.has(article.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
-                    </button>
-                  )}
-                </div>
-              )}
-              <CardContent className="p-5 flex flex-col flex-1">
-                {/* Header with status */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {isAuthenticated && !article.imageUrl && (
-                      <button onClick={() => toggleSelect(article.id)} className="mr-1">
-                        {selectedIds.has(article.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
-                      </button>
-                    )}
-                    <span className="font-medium text-foreground/80">{article.sourceFeedName || 'Unknown'}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDate(article.publicationDate)}
-                    </span>
-                    {article.isHidden && <Badge variant="secondary" className="text-xs">Hidden</Badge>}
-                  </div>
-                  {getStatusBadge(article)}
-                </div>
-
-                {/* Title */}
-                <h3 className="font-semibold text-base leading-snug mb-2 line-clamp-2 group-hover:text-primary transition-colors">
-                  <a href={article.link} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                    {article.title}
-                  </a>
-                </h3>
-
-                {/* Description */}
-                {article.description && (
-                  <p className="text-sm text-muted-foreground line-clamp-3 mb-3 flex-1">
-                    {article.description}
-                  </p>
-                )}
-
-                {/* Tags */}
-                {article.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {article.tags.slice(0, 3).map((tag, i) => (
-                      <Badge key={i} variant="secondary" className="text-xs px-2 py-0">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {article.tags.length > 3 && (
-                      <Badge variant="secondary" className="text-xs px-2 py-0">
-                        +{article.tags.length - 3}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 mt-auto pt-3 border-t border-border/50">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => openReader(article, articles.indexOf(article))}
-                        variant={article.analysisResult ? "outline" : "glow"}
-                        size="sm"
-                        className="flex-1"
-                      >
-                        {article.analysisResult ? (
-                          <>
-                            <Eye className="w-4 h-4" />
-                            Show Analysis
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4" />
-                            Analyze
-                          </>
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {article.analysisResult 
-                        ? "View saved analysis results" 
-                        : "Open full analysis with fact-check and bias detection"}
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                      >
-                        <a href={article.link} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Open article in new tab</TooltipContent>
-                  </Tooltip>
-                  {isAuthenticated && (
-                    <>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button onClick={() => handleToggleHidden(article)} variant="outline" size="sm" disabled={actionLoading}>
-                            {article.isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{article.isHidden ? 'Unhide article' : 'Hide article'}</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button onClick={() => handleSingleDelete(article.id)} variant="outline" size="sm" disabled={actionLoading} className="text-destructive hover:bg-destructive/10">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Delete article</TooltipContent>
-                      </Tooltip>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Load More */}
-      {hasMore && articles.length > 0 && (
-        <div className="flex justify-center pt-4">
-          <Button onClick={loadMore} variant="outline" disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              'Load More'
-            )}
-          </Button>
-        </div>
+        <>
+          <VirtuosoGrid
+            useWindowScroll
+            totalCount={articles.length}
+            components={gridComponents}
+            endReached={loadMore}
+            overscan={200}
+            itemContent={(index) => renderArticleCard(articles[index], index)}
+          />
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </>
       )}
 
       {/* Article Reader Modal */}
